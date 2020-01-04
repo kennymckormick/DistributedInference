@@ -1,6 +1,6 @@
 from functools import partial
 
-from utils import get_dist_info
+from utils.dist_utils import get_dist_info
 from torch.utils.data import DataLoader
 
 # Do not use mmcv collate

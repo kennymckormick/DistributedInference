@@ -11,6 +11,7 @@ sys.path = [os.getcwd()] + sys.path
 from apis.env import *
 import tempfile
 import warnings
+from utils.dist_utils import get_dist_info
 import shutil
 import sys
 warnings.filterwarnings("ignore", category=UserWarning)
