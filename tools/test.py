@@ -8,14 +8,41 @@ import os
 import os.path as osp
 import sys
 sys.path = [os.getcwd()] + sys.path
-
-from ..apis.env import *
+from apis.env import *
 import tempfile
 import warnings
 import shutil
 import sys
 warnings.filterwarnings("ignore", category=UserWarning)
 args = None
+
+def multi_test_writebak(model, data_loader, tmpdir='./tmp'):
+    model.eval()
+    results = []
+    rank, world_size = get_dist_info()
+    count = 0
+    data_time_pool = 0
+    proc_time_pool = 0
+    tic = time.time()
+    for i, data in enumerate(data_loader):
+        if i % 100 == 0:
+            print('rank {}, data_batch {}'.format(rank, i))
+        count = count + 1
+        tac = time.time()
+        data_time_pool = data_time_pool + tac - tic
+
+        with torch.no_grad():
+            result = model(return_loss=False, **data)
+        results.append(result)
+
+        toc = time.time()
+        proc_time_pool = proc_time_pool + toc - tac
+
+        tic = toc
+
+    print('rank {}, begin collect results'.format(rank), flush=True)
+    results = collect_results(results, len(data_loader.dataset), tmpdir)
+    return results
 
 
 def multi_test(model, data_loader, tmpdir='./tmp'):
@@ -41,9 +68,9 @@ def multi_test(model, data_loader, tmpdir='./tmp'):
         proc_time_pool = proc_time_pool + toc - tac
 
         tic = toc
+
     print('rank {}, begin collect results'.format(rank), flush=True)
     results = collect_results(results, len(data_loader.dataset), tmpdir)
-
     return results
 
 

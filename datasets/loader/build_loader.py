@@ -1,6 +1,6 @@
 from functools import partial
 
-from ...utils import get_dist_info
+from utils import get_dist_info
 from torch.utils.data import DataLoader
 
 # Do not use mmcv collate
@@ -17,11 +17,14 @@ if rlimit[0] < 4096:
 def build_dataloader(dataset,
                      imgs_per_gpu,
                      workers_per_gpu,
-                     num_gpus=1,
+                     rank_tot = None,
                      **kwargs):
 
-    rank, world_size = get_dist_info()
-    sampler = DistributedSampler(dataset, world_size, rank, num)
+    if rank_tot == None:
+        rank, world_size = get_dist_info()
+    else:
+        rank, world_size = rank_tot
+    sampler = DistributedSampler(dataset, imgs_per_gpu, world_size, rank)
     batch_size = imgs_per_gpu
     num_workers = workers_per_gpu
 
