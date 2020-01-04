@@ -5,4 +5,4 @@ A minimal framework for distributed inference, run on CDC and Cluster.
 1. Image Classification Inference
 
 ## Todo
-[] Support Optical Flow Inference
+- [ ] Support Optical Flow Inference
