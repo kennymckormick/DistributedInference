@@ -17,6 +17,7 @@ import sys
 from datasets import build_dataloader, ImageDataset
 from models.resnet import ResNet
 from utils.io_utils import load_pickle, dump_pickle
+from torch.nn.parallel import DistributedDataParallel
 warnings.filterwarnings("ignore", category=UserWarning)
 args = None
 
@@ -36,7 +37,7 @@ def multi_test_writebak(model, data_loader, tmpdir='./tmp'):
         data_time_pool = data_time_pool + tac - tic
 
         with torch.no_grad():
-            result = model(return_loss=False, **data)
+            result = model(data['img'])
         results.append(result)
 
         toc = time.time()
@@ -65,7 +66,7 @@ def multi_test(model, data_loader, tmpdir='./tmp'):
         data_time_pool = data_time_pool + tac - tic
 
         with torch.no_grad():
-            result = model(return_loss=False, **data)
+            result = model(data['img'])
         results.append(result)
 
         toc = time.time()
@@ -103,14 +104,15 @@ def collect_results(result_part, size, tmpdir=None):
     # dump the part result to the dir
 
     print('rank {} begin dump'.format(rank), flush=True)
+    # also convert to np array
     def tolist(results):
         ret = []
         for item in results:
             item_len = item.shape[0]
             for i in range(item_len):
-                ret.append(item[i: i + 1])
+                ret.append(item[i: i + 1].data.cpu().numpy())
         return ret
-    results = tolist(results)
+    result_part = tolist(result_part)
     dump_pickle(result_part, osp.join(tmpdir, 'part_{}.pkl'.format(rank)))
     print('rank {} finished dump'.format(rank), flush=True)
     dist.barrier()
@@ -136,9 +138,10 @@ def collect_results(result_part, size, tmpdir=None):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Test an action recognizer')
-    parser.add_argument('checkpoint', help='checkpoint file')
-    parser.add_argument('--imglist', help='checkpoint file', type=str, default='')
-    parser.add_argument('--imgroot', help='checkpoint file', type=str, default='')
+    parser.add_argument('--checkpoint', help='checkpoint file', type=str, default='weights/resnet50-19c8e357.pth')
+    parser.add_argument('--imglist', help='inference list', type=str, default='')
+    parser.add_argument('--imgroot', help='data root', type=str, default='')
+    parser.add_argument('--port', help='communication port', type=int, default=16807)
     parser.add_argument(
         '--launcher',
         choices=['none', 'pytorch', 'slurm', 'mpi'],
@@ -164,7 +167,7 @@ def main():
 
     # launcher should be defined
     distributed = True
-    init_dist(args.launcher, **cfg.dist_params)
+    init_dist(args.launcher, port=args.port)
 
     # define your model
     model = ResNet(depth=50,
@@ -178,18 +181,18 @@ def main():
     # define them on demand
     data_loader = build_dataloader(
         dataset,
-        imgs_per_gpu=4,
+        imgs_per_gpu=6,
         workers_per_gpu=2)
 
     # load weight, may need change
-    load_checkpoint(model, args.checkpoint, map_location='cpu')
+    model.load_state_dict(torch.load(args.checkpoint))
 
     model = DistributedDataParallel(model.cuda())
     outputs = multi_test(model, data_loader)
 
     rank, _ = get_dist_info()
     if args.out and rank == 0:
-        dump_pickle(outputs, arg.out)
+        dump_pickle(outputs, args.out)
 
 if __name__ == '__main__':
     main()

@@ -99,10 +99,10 @@ class ImageDataset(Dataset):
         im = imcrop(im, self.crop_size, crop_opt)
         im = normalize(im, self.mean, self.std, self.to_rgb)
 
-        im = im.transpose(2, 0, 1)
+        im = im.transpose(2, 0, 1).astype(np.float32)
         im = torch.from_numpy(im)
 
         ret = {}
-        ret['im'] = im
+        ret['img'] = im
         ret['ind'] = idx
         return ret

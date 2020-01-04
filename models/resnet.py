@@ -173,7 +173,6 @@ def make_res_layer(block,
     return nn.Sequential(*layers)
 
 
-@BACKBONES.register_module
 class ResNet(nn.Module):
     """ResNet backbone.
 
@@ -227,6 +226,7 @@ class ResNet(nn.Module):
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.global_pool = nn.AvgPool2d(kernel_size=7, stride=1, padding=0)
 
         self.res_layers = []
         for i, num_blocks in enumerate(self.stage_blocks):
@@ -267,6 +267,8 @@ class ResNet(nn.Module):
         for i, layer_name in enumerate(self.res_layers):
             res_layer = getattr(self, layer_name)
             x = res_layer(x)
+        x = self.global_pool(x)
+        x = x.view((-1, self.feat_dim))
         if self.num_classes is not None:
             x = self.fc(x)
         return x

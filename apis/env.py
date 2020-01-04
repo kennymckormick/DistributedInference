@@ -20,10 +20,10 @@ def init_dist(launcher, backend='nccl', **kwargs):
         raise ValueError('Invalid launcher type: {}'.format(launcher))
 
 
-def _init_dist_pytorch(backend, **kwargs):
+def _init_dist_pytorch(backend, port, **kwargs):
     # TODO: use local_rank instead of rank % num_gpus
     rank = int(os.environ['RANK'])
-    os.environ['MASTER_PORT'] = str(kwargs.pop('port'))
+    os.environ['MASTER_PORT'] = str(port)
     print(os.environ['MASTER_PORT'])
     if 'OFFSET' in os.environ:
         offset = int(os.environ['OFFSET'])
