@@ -268,7 +268,8 @@ class ResNet(nn.Module):
             res_layer = getattr(self, layer_name)
             x = res_layer(x)
         if self.num_classes is not None:
-            return self.fc(x)
+            x = self.fc(x)
+        return x
 
     def train(self, mode=True):
         super(ResNet, self).train(mode)
