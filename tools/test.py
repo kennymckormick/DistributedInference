@@ -18,6 +18,7 @@ from datasets import build_dataloader, ImageDataset
 from models.resnet import ResNet
 from utils.io_utils import load_pickle, dump_pickle
 from torch.nn.parallel import DistributedDataParallel
+from scipy.special import softmax
 warnings.filterwarnings("ignore", category=UserWarning)
 args = None
 
@@ -91,7 +92,6 @@ def collect_results(result_part, size, tmpdir=None):
     if rank != 0:
         return None
     else:
-        # load results of all parts from tmp dir
         part_list = []
         for i in range(world_size):
             part_file = osp.join(tmpdir, 'part_{}.pkl'.format(i))
@@ -119,8 +119,11 @@ def parse_args():
         default='none',
         help='job launcher')
     parser.add_argument('--out', help='output result file', type=str, default='default.pkl')
-    parser.add_argument('--use_softmax', action='store_true', help='whether to use softmax score')
+    parser.add_argument('--raw_score', action='store_true', help='whether to use raw score')
     parser.add_argument('--local_rank', type=int, default=0)
+    parser.add_argument('--keep_raw', action='store_true', help='keep raw prediction')
+    parser.add_argument('--flip_aug', action='store_true')
+    parser.add_argument('--crop_aug', type=str, default='None')
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
         os.environ['LOCAL_RANK'] = str(args.local_rank)
@@ -134,7 +137,13 @@ def main():
         raise ValueError('The output file must be a pkl file.')
 
     # define your dataset
-    dataset = ImageDataset(args.imglist, args.imgroot)
+    flip_aug = [False, True] if args.flip_aug else [False]
+    crop_aug = ['M']
+    if args.crop_aug == 'three':
+        crop_aug = ['L', 'M', 'R']
+    if args.crop_aug == 'five':
+        crop_aug = ['LU', 'RU', 'M', 'LD', 'RD']
+    dataset = ImageDataset(args.imglist, args.imgroot, flip_options=flip_aug, crop_options=crop_aug)
 
     # launcher should be defined
     distributed = True
@@ -163,6 +172,14 @@ def main():
 
     rank, _ = get_dist_info()
     if args.out and rank == 0:
+        if not args.raw_score:
+            outputs = list(map(softmax, outputs))
+        if not args.keep_raw:
+            n_aug = len(flip_aug) * len(crop_aug)
+            n_samples = len(outputs) // n_aug
+            reduced_outputs = list(map(lambda idx:
+                        sum(outputs[idx * n_aug: idx * n_aug + n_aug]) / n_aug, range(n_samples)))
+            outputs = reduced_outputs
         dump_pickle(outputs, args.out)
 
 if __name__ == '__main__':
