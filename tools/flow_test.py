@@ -14,7 +14,7 @@ import warnings
 from utils.dist_utils import get_dist_info
 import shutil
 import sys
-from datasets import build_dataloader, ImageDataset
+from datasets import build_dataloader, FlowFrameDataset
 from utils.io_utils import load_pickle, dump_pickle
 from torch.nn.parallel import DistributedDataParallel
 from scipy.special import softmax
@@ -100,8 +100,6 @@ def parse_args():
 def main():
     global args
     args = parse_args()
-    if args.out is not None and not args.out.endswith(('.pkl', '.pickle')):
-        raise ValueError('The output file must be a pkl file.')
 
     dataset = FlowFrameDataset(args.imglist, args.imgroot, padding_base=args.pad_base)
 
@@ -110,11 +108,10 @@ def main():
     init_dist(args.launcher, port=args.port)
 
     # define your model
-    args = ABC()
-    args.fp16 = False
-    args.rgb_max = 255.0
-    model = FlowNet2(args)
-    pretrain_weight = torch.load()
+    model_args = ABC()
+    model_args.fp16 = False
+    model_args.rgb_max = 255.0
+    model = FlowNet2(model_args)
     state_dict = torch.load(args.checkpoint)['state_dict']
 
     # define them on demand
