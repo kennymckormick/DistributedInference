@@ -90,19 +90,23 @@ class FlowFrameDataset(Dataset):
             if self.resize is not None:
                 im = imresize(im, self.resize)
 
+            h, w, _ = im.shape
             # pad pure black
             im = impad_to(im, self.padding_base, [0, 0, 0])
             im = normalize(im, self.mean, self.std, self.to_rgb)
             im = im.transpose(2, 0, 1).astype(np.float32)
             im = torch.from_numpy(im)
-            return im
+            return im, (h, w)
 
-        im_A = loadim(self.img_A[idx])
-        im_B = loadim(self.img_B[idx])
+        im_A, org_shape = loadim(self.img_A[idx])
+        im_B, org_shape = loadim(self.img_B[idx])
+        h, w = org_shape
 
         im = torch.cat([im_A, im_B], dim=0)
         ret = {}
         ret['img'] = im
         ret['ind'] = idx
         ret['dest'] = self.dest_pth[idx]
+        ret['hw'] = np.array([h, w])
+
         return ret

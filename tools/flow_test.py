@@ -15,14 +15,18 @@ from utils.dist_utils import get_dist_info
 import shutil
 import sys
 from datasets import build_dataloader, ImageDataset
-from models.resnet import ResNet
 from utils.io_utils import load_pickle, dump_pickle
 from torch.nn.parallel import DistributedDataParallel
 from scipy.special import softmax
+from utils.flow_utils import FlowToImg
+from abc import abstractproperty as ABC
+
 warnings.filterwarnings("ignore", category=UserWarning)
 args = None
 
-def multi_test_writebak(model, data_loader, tmpdir='./tmp'):
+from models.flownet2 import FlowNet2
+
+def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0):
     model.eval()
     results = []
     rank, world_size = get_dist_info()
@@ -33,26 +37,50 @@ def multi_test_writebak(model, data_loader, tmpdir='./tmp'):
     for i, data in enumerate(data_loader):
         if i % 100 == 0:
             print('rank {}, data_batch {}'.format(rank, i))
+
         count = count + 1
         tac = time.time()
         data_time_pool = data_time_pool + tac - tic
 
         with torch.no_grad():
+            inp = data['img']
+            # convert shape from N, 6, H, W To N, 3, 2, H, W
+            new_shape = inp.shape[:1] + (3, 2) + inp.shape[2:]
+            inp = inp.view(new_shape)
             result = model(data['img'])
-        results.append(result)
+            names = data['dest']
+            result = result.data.cpu().numpy()
+
+            batch_size = len(names)
+
+            hws = data['hw'].data.cpu().numpy()
+            # for image with different shape, batch_size = 1
+            # if you want a larger batch_size, your input image shape should be exactly same
+            # you can improve it by using group sampler, but im lazy ...
+            for i in range(batch_size):
+                tmpl = names[i]
+                hw = hws[i]
+                h, w = hw[0], hw[1]
+                flow = result[i].transpose(1, 2, 0)
+                flow = flow[:h, :w]
+                flow_x = FlowToImg(flow[:,:,:1])
+                flow_y = FlowToImg(flow[:,:,1:])
+                base_pth = osp.dirname(tmpl)
+                if not osp.exists(base_pth):
+                    os.system('mkdir -p ' + base_pth)
+                cv2.imwrite(tmpl.format(x), flow_x)
+                cv2.imwrite(tmpl.format(y), flow_y)
+
 
         toc = time.time()
         proc_time_pool = proc_time_pool + toc - tac
 
         tic = toc
 
-    print('rank {}, begin collect results'.format(rank), flush=True)
-    results = collect_results(results, len(data_loader.dataset), tmpdir)
-    return results
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Test an action recognizer')
-    parser.add_argument('--checkpoint', help='checkpoint file', type=str, default='weights/resnet50-19c8e357.pth')
+    parser.add_argument('--checkpoint', help='checkpoint file', type=str, default='weights/FlowNet2_checkpoint.pth.tar')
     parser.add_argument('--imglist', help='inference list', type=str, default='')
     parser.add_argument('--imgroot', help='data root', type=str, default='')
     parser.add_argument('--port', help='communication port', type=int, default=16807)
@@ -75,51 +103,32 @@ def main():
     if args.out is not None and not args.out.endswith(('.pkl', '.pickle')):
         raise ValueError('The output file must be a pkl file.')
 
-    # define your dataset
-    flip_aug = [False, True] if args.flip_aug else [False]
-    crop_aug = ['M']
-    if args.crop_aug == 'three':
-        crop_aug = ['L', 'M', 'R']
-    if args.crop_aug == 'five':
-        crop_aug = ['LU', 'RU', 'M', 'LD', 'RD']
-    dataset = ImageDataset(args.imglist, args.imgroot, flip_options=flip_aug, crop_options=crop_aug)
+    dataset = FlowFrameDataset(args.imglist, args.imgroot, padding_base=args.pad_base)
 
     # launcher should be defined
     distributed = True
     init_dist(args.launcher, port=args.port)
 
     # define your model
-    model = ResNet(depth=50,
-                    num_stages=4,
-                    strides=(1, 2, 2, 2),
-                    dilations=(1, 1, 1, 1),
-                    style='pytorch',
-                    frozen_stages=-1,
-                    num_classes=1000)
+    args = ABC()
+    args.fp16 = False
+    args.rgb_max = 255.0
+    model = FlowNet2(args)
+    pretrain_weight = torch.load()
+    state_dict = torch.load(args.checkpoint)['state_dict']
 
     # define them on demand
+    # By default, flow frame loader have batch size 1, in case different shape
     data_loader = build_dataloader(
         dataset,
-        imgs_per_gpu=6,
-        workers_per_gpu=2)
+        imgs_per_gpu=1,
+        workers_per_gpu=1)
 
     # load weight, may need change
-    model.load_state_dict(torch.load(args.checkpoint))
+    model.load_state_dict(state_dict)
 
     model = DistributedDataParallel(model.cuda())
     outputs = multi_test(model, data_loader)
-
-    rank, _ = get_dist_info()
-    if args.out and rank == 0:
-        if not args.raw_score:
-            outputs = list(map(softmax, outputs))
-        if not args.keep_raw:
-            n_aug = len(flip_aug) * len(crop_aug)
-            n_samples = len(outputs) // n_aug
-            reduced_outputs = list(map(lambda idx:
-                        sum(outputs[idx * n_aug: idx * n_aug + n_aug]) / n_aug, range(n_samples)))
-            outputs = reduced_outputs
-        dump_pickle(outputs, args.out)
 
 if __name__ == '__main__':
     main()
