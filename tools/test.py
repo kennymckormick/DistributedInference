@@ -26,6 +26,8 @@ def multi_test(model, data_loader, tmpdir='./tmp'):
     model.eval()
     results = []
     rank, world_size = get_dist_info()
+    n_gpu = torch.cuda.device_count()
+    my_gpu = rank % n_gpu
     count = 0
     data_time_pool = 0
     proc_time_pool = 0
@@ -38,7 +40,8 @@ def multi_test(model, data_loader, tmpdir='./tmp'):
         data_time_pool = data_time_pool + tac - tic
 
         with torch.no_grad():
-            result = model(data['img'])
+            inp = data['img'].to(my_gpu)
+            result = model(inp)
         results.append(result)
 
         toc = time.time()
@@ -168,7 +171,10 @@ def main():
     # load weight, may need change
     model.load_state_dict(torch.load(args.checkpoint))
 
-    model = DistributedDataParallel(model.cuda())
+    rank, world_size = get_dist_info()
+    n_gpu = torch.cuda.device_count()
+    model = model.to(rank % n_gpu)
+
     outputs = multi_test(model, data_loader)
 
     rank, _ = get_dist_info()
