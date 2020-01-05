@@ -39,6 +39,8 @@ class ImageDataset(Dataset):
         self.to_rgb = to_rgb
 
         imgs = open(img_list).read().split('\n')
+        while '' == imgs[-1]:
+            imgs = imgs[:-1]
         self.imgs = list(map(lambda x: osp.join(img_prefix, x), imgs))
         self.storage_backend = storage_backend
         self.mclient, self.cclient = None, None
@@ -93,7 +95,10 @@ class ImageDataset(Dataset):
         flip_opt = self.flip_options[flip_idx]
         crop_opt = self.crop_options[crop_idx]
         im = self.load_image(self.imgs[im_idx])
-        im = imresize(im, self.resize)
+        try:
+            im = imresize(im, self.resize)
+        except:
+            print(idx)
         if flip_opt:
             im = imflip(im)
         im = imcrop(im, self.crop_size, crop_opt)

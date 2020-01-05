@@ -124,6 +124,7 @@ def parse_args():
     parser.add_argument('--keep_raw', action='store_true', help='keep raw prediction')
     parser.add_argument('--flip_aug', action='store_true')
     parser.add_argument('--crop_aug', type=str, default='None')
+    parser.add_argument('--out_pred', help='output predicted label', type=str, default='default.txt')
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
         os.environ['LOCAL_RANK'] = str(args.local_rank)
@@ -161,8 +162,8 @@ def main():
     # define them on demand
     data_loader = build_dataloader(
         dataset,
-        imgs_per_gpu=6,
-        workers_per_gpu=2)
+        imgs_per_gpu=2,
+        workers_per_gpu=1)
 
     # load weight, may need change
     model.load_state_dict(torch.load(args.checkpoint))
@@ -180,6 +181,11 @@ def main():
             reduced_outputs = list(map(lambda idx:
                         sum(outputs[idx * n_aug: idx * n_aug + n_aug]) / n_aug, range(n_samples)))
             outputs = reduced_outputs
+        pred = list(map(np.argmax, outputs))
+        if args.out_pred:
+            pred_str = [str(x) for x in pred]
+            with open(args.out_pred, 'w') as fout:
+                fout.write('\n'.join(pred_str))
         dump_pickle(outputs, args.out)
 
 if __name__ == '__main__':
