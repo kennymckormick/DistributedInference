@@ -30,6 +30,8 @@ def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0):
     model.eval()
     results = []
     rank, world_size = get_dist_info()
+    n_gpu = torch.cuda.device_count()
+    my_gpu = rank % n_gpu
     count = 0
     data_time_pool = 0
     proc_time_pool = 0
@@ -47,7 +49,8 @@ def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0):
             # convert shape from N, 6, H, W To N, 3, 2, H, W
             new_shape = inp.shape[:1] + (3, 2) + inp.shape[2:]
             inp = inp.view(new_shape)
-            result = model(data['img'])
+            inp = inp.to(my_gpu)
+            result = model(inp)
             names = data['dest']
             result = result.data.cpu().numpy()
 
@@ -123,8 +126,10 @@ def main():
 
     # load weight, may need change
     model.load_state_dict(state_dict)
+    rank, world_size = get_dist_info()
+    n_gpu = torch.cuda.device_count()
 
-    model = DistributedDataParallel(model.cuda())
+    model = model.to(rank % n_gpu)
     outputs = multi_test(model, data_loader)
 
 if __name__ == '__main__':
