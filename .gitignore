@@ -2,3 +2,6 @@
 tmp/*
 weights/*
 tmp*
+*.egg-info*
+*build*
+*.egg

@@ -3,7 +3,7 @@ import os.path as osp
 from torch.utils.data import Dataset
 import torch
 import os
-from .utils import imfrombytes, imresize, imflip, imcrop, normalize
+from .utils import imfrombytes, imresize, imflip, imcrop, normalize, impad_to
 import sys
 import cv2
 import random as rd
@@ -14,21 +14,18 @@ try:
 except ImportError:
     pass
 
-# If you want testing augmentation, just do it
-class ImageDataset(Dataset):
+
+# By default, it will reture 6 channel image
+class FlowFrameDataset(Dataset):
     def __init__(self,
                  img_list,
                  img_prefix,
                  storage_backend='disk',
-                 # rescale can be int(short edge) or tuple(w, h)
-                 resize=256,
-                 flip_options=[False],
-                 crop_size=224,
+                 resize=None,
+                 padding_base=1,
                  mean=[123.675, 116.28, 103.53],
                  std=[58.395, 57.12, 57.375],
-                 to_rgb=True,
-                 # valid crop_options: LU, RU, L, R, M, LD, RD
-                 crop_options=['M']):
+                 to_rgb=True):
 
         # param added 9/26/2019, 1:55:42 PM
         self.img_list = img_list
@@ -37,23 +34,26 @@ class ImageDataset(Dataset):
         self.mean = np.array(mean)
         self.std = np.array(std)
         self.to_rgb = to_rgb
+        self.padding_base = padding_base
 
         imgs = open(img_list).read().split('\n')
-        self.imgs = list(map(lambda x: osp.join(img_prefix, x), imgs))
+        imgs = list(map(lambda x: x.split(), imgs))
+        self.img_A = list(map(lambda x: osp.join(self.img_prefix, x[0]), imgs))
+        self.img_B = list(map(lambda x: osp.join(self.img_prefix, x[1]), imgs))
+        self.dest_pth = list(map(lambda x: osp.join(self.img_prefix, x[2]), imgs))
+        assert len(self.img_A) == len(self.img_B)
+
+
         self.storage_backend = storage_backend
         self.mclient, self.cclient = None, None
 
-        self.flip_options = flip_options
-        self.crop_options = crop_options
-        self.n_aug = len(flip_options) * len(crop_options)
         self.resize = resize
-        self.crop_size = crop_size
         loading_funcs = {'disk': self._load_image_disk,
                          'memcached': self._load_image_memcached, 'ceph': self._load_image_ceph}
         self.load_image = loading_funcs[self.storage_backend]
 
     def __len__(self):
-        return len(self.imgs) * self.n_aug
+        return len(self.img_A)
 
     def _ensure_memcached(self):
         if self.mclient is None:
@@ -85,25 +85,24 @@ class ImageDataset(Dataset):
         return imfrombytes(value_buf)
 
     def __getitem__(self, idx):
-        im_idx = idx // self.n_aug
-        aug_idx = idx % self.n_aug
-        flip_idx = aug_idx // len(self.crop_options)
-        crop_idx = aug_idx % len(self.crop_options)
+        def loadim(pth):
+            im = self.load_image(pth)
+            if self.resize is not None:
+                im = imresize(im, self.resize)
 
-        flip_opt = self.flip_options[flip_idx]
-        crop_opt = self.crop_options[crop_idx]
-        im = self.load_image(self.imgs[im_idx])
-        im = imresize(im, self.resize)
-        if flip_opt:
-            im = imflip(im)
-        im = imcrop(im, self.crop_size, crop_opt)
-        im = normalize(im, self.mean, self.std, self.to_rgb)
+            # pad pure black
+            im = impad_to(im, self.padding_base, [0, 0, 0])
+            im = normalize(im, self.mean, self.std, self.to_rgb)
+            im = im.transpose(2, 0, 1).astype(np.float32)
+            im = torch.from_numpy(im)
+            return im
 
-        im = im.transpose(2, 0, 1).astype(np.float32)
-        im = torch.from_numpy(im)
+        im_A = loadim(self.img_A[idx])
+        im_B = loadim(self.img_B[idx])
 
+        im = torch.cat([im_A, im_B], dim=0)
         ret = {}
         ret['img'] = im
         ret['ind'] = idx
-        ret['str'] = 'tmp'
+        ret['dest'] = self.dest_pth[idx]
         return ret
