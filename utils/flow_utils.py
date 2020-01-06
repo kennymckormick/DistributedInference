@@ -107,6 +107,7 @@ def flow2rgb(flow, color_wheel=None, unknown_thr=1e6):
     flow_img[np.logical_not(small_ind)] *= 0.75
 
     flow_img[ignore_inds, :] = 0
+    flow_img = (flow_img * 255).astype(np.uint8)
 
     return flow_img
 
