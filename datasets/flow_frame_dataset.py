@@ -23,16 +23,16 @@ class FlowFrameDataset(Dataset):
                  storage_backend='disk',
                  resize=None,
                  padding_base=1,
-                 mean=[0, 0, 0],
-                 std=[1, 1, 1],
+                 mean=0,
+                 std=1,
                  to_rgb=True):
 
         # param added 9/26/2019, 1:55:42 PM
         self.img_list = img_list
         self.img_prefix = img_prefix
 
-        self.mean = np.array(mean)
-        self.std = np.array(std)
+        self.mean = mean
+        self.std = std
         self.to_rgb = to_rgb
         self.padding_base = padding_base
 
@@ -93,7 +93,10 @@ class FlowFrameDataset(Dataset):
             h, w, _ = im.shape
             # pad pure black
             im = impad_to(im, self.padding_base, [0, 0, 0])
-            im = normalize(im, self.mean, self.std, self.to_rgb)
+            if self.mean == 0 and self.std == 1:
+                pass
+            else:
+                im = normalize(im, self.mean, self.std, self.to_rgb)
             im = im.transpose(2, 0, 1).astype(np.float32)
             im = torch.from_numpy(im)
             return im, (h, w)
@@ -102,9 +105,9 @@ class FlowFrameDataset(Dataset):
         im_B, org_shape = loadim(self.img_B[idx])
         h, w = org_shape
 
-        im = torch.cat([im_A, im_B], dim=0)
         ret = {}
-        ret['img'] = im
+        ret['im_A'] = im_A
+        ret['im_B'] = im_B
         ret['ind'] = idx
         ret['dest'] = self.dest_pth[idx]
         ret['hw'] = np.array([h, w])
