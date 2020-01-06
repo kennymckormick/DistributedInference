@@ -78,7 +78,7 @@ def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=10.0, vis=Fals
                     base_pth = osp.dirname(tmpl)
                     if not osp.exists(base_pth):
                         os.system('mkdir -p ' + base_pth)
-                    cv2.imwrite(tmpl.format('vis'), img)
+                    cv2.imwrite(tmpl.format('vis'), img[:,:,::-1])
 
 
 
