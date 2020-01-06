@@ -7,6 +7,7 @@ from .utils import imfrombytes, imresize, imflip, imcrop, normalize, impad_to
 import sys
 import cv2
 import random as rd
+from utils import mrlines
 sys.path.append('/mnt/lustre/share/pymc/py3')
 try:
     import mc
@@ -36,11 +37,11 @@ class FlowVideoDataset(Dataset):
         self.to_rgb = to_rgb
         self.padding_base = padding_base
 
-        videos = open(video_list).read().split('\n')
+        videos = mrlines(video_list)
         videos = list(map(lambda x: x.split(), videos))
 
-        self.videos = list(map(lambda x: osp.join(self.img_prefix, x[0]), videos))
-        self.tmpls = list(map(lambda x: osp.join(self.img_prefix, x[1]), videos))
+        self.videos = list(map(lambda x: osp.join(self.video_prefix, x[0]), videos))
+        self.tmpls = list(map(lambda x: osp.join(self.video_prefix, x[1]), videos))
         assert len(self.videos) == len(self.tmpls)
 
         self.resize = resize
@@ -61,7 +62,7 @@ class FlowVideoDataset(Dataset):
 
     def __getitem__(self, idx):
         def loadvid(pth):
-            ims = self.loadvid(pth)
+            ims = self.load_video(pth)
             if self.resize is not None:
                 ims = list(map(lambda im: imresize(im, self.resize), ims))
 

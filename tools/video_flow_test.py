@@ -15,7 +15,7 @@ import warnings
 from utils.dist_utils import get_dist_info
 import shutil
 import sys
-from datasets import build_dataloader, FlowFrameDataset
+from datasets import build_dataloader, FlowVideoDataset
 from utils.io_utils import load_pickle, dump_pickle
 from torch.nn.parallel import DistributedDataParallel
 from scipy.special import softmax
@@ -27,7 +27,7 @@ args = None
 
 from models.flownet2 import FlowNet2
 
-def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0, vis=False, batch_size):
+def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0, vis=False, batch_size=4):
     model.eval()
     results = []
     rank, world_size = get_dist_info()
@@ -141,7 +141,7 @@ def main():
     n_gpu = torch.cuda.device_count()
 
     model = model.to(rank % n_gpu)
-    outputs = multi_test_writebak(model, data_loader, vis=args.vis)
+    outputs = multi_test_writebak(model, data_loader, vis=args.vis, batch_size=args.batch_size)
 
 if __name__ == '__main__':
     main()

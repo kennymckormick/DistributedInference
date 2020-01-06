@@ -18,7 +18,7 @@
   Datasets: 
 
    - [x] FlowFrameDataset
-   - [ ] FlowVideoDataset
+   - [x] FlowVideoDataset
 
   Algorithms:
 
@@ -28,10 +28,15 @@
 
   First, switch to flow branch, compile needed packages with `bash compile.sh`
 
-  To run inference on demo data, run command:
+  To run inference on demo data (frames), run command:
 
   `./tools/dist_test.sh 2 --imglist demo_data/flow_est/img_list.txt --imgroot demo_data/flow_est/ --pad_base 64`
+
+To run inference in demo data (videos), run command:
+
+`./tools/video_dist_test.sh 2 --vidlist demo_data/flow_est/vid_list.txt --vidroot demo_data/flow_est/ --pad_base 64`
 
   Since FlowNet2 only run with images who's width and height are devided by 64, pad_base needs to set to 64.
 
   Add `--vis`, you can get colorful visualization instead of gray scale flow images.
+
