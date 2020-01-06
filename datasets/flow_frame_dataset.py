@@ -23,8 +23,8 @@ class FlowFrameDataset(Dataset):
                  storage_backend='disk',
                  resize=None,
                  padding_base=1,
-                 mean=[123.675, 116.28, 103.53],
-                 std=[58.395, 57.12, 57.375],
+                 mean=[0, 0, 0],
+                 std=[1, 1, 1],
                  to_rgb=True):
 
         # param added 9/26/2019, 1:55:42 PM

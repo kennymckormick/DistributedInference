@@ -101,7 +101,7 @@ def parse_args():
         help='job launcher')
     parser.add_argument('--local_rank', type=int, default=0)
     parser.add_argument('--pad_base', type=int, default=None)
-    parser.add_argument('--vis', action='store_ture')
+    parser.add_argument('--vis', action='store_true')
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
         os.environ['LOCAL_RANK'] = str(args.local_rank)
@@ -138,7 +138,7 @@ def main():
     n_gpu = torch.cuda.device_count()
 
     model = model.to(rank % n_gpu)
-    outputs = multi_test(model, data_loader, vis=args.vis)
+    outputs = multi_test_writebak(model, data_loader, vis=args.vis)
 
 if __name__ == '__main__':
     main()
