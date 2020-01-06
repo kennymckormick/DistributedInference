@@ -1,4 +1,4 @@
-- [ ] # DistributedInference
+# DistributedInference
   A minimal framework for distributed inference, run on PC, CDC and Cluster.
 
   Inference workload will be split into n parts, and uniformly distributed to cuda devices.
