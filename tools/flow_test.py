@@ -7,6 +7,7 @@ import torch.distributed as dist
 import os
 import os.path as osp
 import sys
+import cv2
 sys.path = [os.getcwd()] + sys.path
 from apis.env import *
 import tempfile
@@ -18,7 +19,7 @@ from datasets import build_dataloader, FlowFrameDataset
 from utils.io_utils import load_pickle, dump_pickle
 from torch.nn.parallel import DistributedDataParallel
 from scipy.special import softmax
-from utils.flow_utils import FlowToImg
+from utils.flow_utils import FlowToImg, flow2rgb
 from abc import abstractproperty as ABC
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -26,7 +27,7 @@ args = None
 
 from models.flownet2 import FlowNet2
 
-def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0):
+def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=10.0, vis=False):
     model.eval()
     results = []
     rank, world_size = get_dist_info()
@@ -46,16 +47,14 @@ def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0):
 
         with torch.no_grad():
             inp = data['img']
-            # convert shape from N, 6, H, W To N, 3, 2, H, W
-            new_shape = inp.shape[:1] + (3, 2) + inp.shape[2:]
-            inp = inp.view(new_shape)
+
             inp = inp.to(my_gpu)
-            result = model(inp)
+            inp1, inp2 = inp[:,:3], inp[:,3:]
+            result = model(inp1, inp2)
             names = data['dest']
             result = result.data.cpu().numpy()
 
             batch_size = len(names)
-
             hws = data['hw'].data.cpu().numpy()
             # for image with different shape, batch_size = 1
             # if you want a larger batch_size, your input image shape should be exactly same
@@ -66,13 +65,21 @@ def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0):
                 h, w = hw[0], hw[1]
                 flow = result[i].transpose(1, 2, 0)
                 flow = flow[:h, :w]
-                flow_x = FlowToImg(flow[:,:,:1])
-                flow_y = FlowToImg(flow[:,:,1:])
-                base_pth = osp.dirname(tmpl)
-                if not osp.exists(base_pth):
-                    os.system('mkdir -p ' + base_pth)
-                cv2.imwrite(tmpl.format(x), flow_x)
-                cv2.imwrite(tmpl.format(y), flow_y)
+                if not vis:
+                    flow_x = FlowToImg(flow[:,:,:1])
+                    flow_y = FlowToImg(flow[:,:,1:])
+                    base_pth = osp.dirname(tmpl)
+                    if not osp.exists(base_pth):
+                        os.system('mkdir -p ' + base_pth)
+                    cv2.imwrite(tmpl.format('x'), flow_x)
+                    cv2.imwrite(tmpl.format('y'), flow_y)
+                else:
+                    img = flow2rgb(flow)
+                    base_pth = osp.dirname(tmpl)
+                    if not osp.exists(base_pth):
+                        os.system('mkdir -p ' + base_pth)
+                    cv2.imwrite(tmpl.format('vis'), img)
+
 
 
         toc = time.time()
@@ -94,6 +101,7 @@ def parse_args():
         help='job launcher')
     parser.add_argument('--local_rank', type=int, default=0)
     parser.add_argument('--pad_base', type=int, default=None)
+    parser.add_argument('--vis', action='store_ture')
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
         os.environ['LOCAL_RANK'] = str(args.local_rank)
@@ -130,7 +138,7 @@ def main():
     n_gpu = torch.cuda.device_count()
 
     model = model.to(rank % n_gpu)
-    outputs = multi_test(model, data_loader)
+    outputs = multi_test(model, data_loader, vis=args.vis)
 
 if __name__ == '__main__':
     main()
