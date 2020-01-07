@@ -132,9 +132,11 @@ def main():
     args = parse_args()
 
     to_rgb = True
+    std = 1.0
     if args.algo == 'pwcnet':
         to_rgb = False
-    dataset = FlowFrameDataset(args.imglist, args.imgroot, padding_base=args.pad_base, to_rgb=to_rgb)
+        std = 255.0
+    dataset = FlowFrameDataset(args.imglist, args.imgroot, padding_base=args.pad_base, to_rgb=to_rgb, std=std)
 
     if args.algo == 'flownet2':
         args.checkpoint = 'weights/FlowNet2_checkpoint.pth.tar'
