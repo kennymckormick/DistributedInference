@@ -28,7 +28,10 @@ args = None
 from models.flownet2 import FlowNet2
 from models.pwcnet import PWCNet
 
-def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0, vis=False, algo='flownet2'):
+def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0):
+    algo = args.algo
+    vis = args.vis
+    out_flo = args.out_flo
     model.eval()
     results = []
     rank, world_size = get_dist_info()
@@ -73,13 +76,19 @@ def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0, vis=Fals
                 flow = result[i].transpose(1, 2, 0)
                 flow = flow[:h, :w]
                 if not vis:
-                    flow_x = FlowToImg(flow[:,:,:1])
-                    flow_y = FlowToImg(flow[:,:,1:])
-                    base_pth = osp.dirname(tmpl)
-                    if not osp.exists(base_pth):
-                        os.system('mkdir -p ' + base_pth)
-                    cv2.imwrite(tmpl.format('x'), flow_x)
-                    cv2.imwrite(tmpl.format('y'), flow_y)
+                    if out_flo:
+                        base_pth = osp.dirname(tmpl)
+                        if not osp.exists(base_pth):
+                            os.system('mkdir -p ' + base_pth)
+                        np.save(tmpl.format('flo').replace('jpg', 'npy'), flow)
+                    else:
+                        flow_x = FlowToImg(flow[:,:,:1])
+                        flow_y = FlowToImg(flow[:,:,1:])
+                        base_pth = osp.dirname(tmpl)
+                        if not osp.exists(base_pth):
+                            os.system('mkdir -p ' + base_pth)
+                        cv2.imwrite(tmpl.format('x'), flow_x)
+                        cv2.imwrite(tmpl.format('y'), flow_y)
                 else:
                     img = flow2rgb(flow)
                     base_pth = osp.dirname(tmpl)
@@ -111,6 +120,7 @@ def parse_args():
     parser.add_argument('--pad_base', type=int, default=None)
     parser.add_argument('--vis', action='store_true')
     parser.add_argument('--algo', type=str, help='algorithm to use for flow estimation', default='flownet2')
+    parser.add_argument('--out_flo', action='store_true')
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
         os.environ['LOCAL_RANK'] = str(args.local_rank)
@@ -163,7 +173,7 @@ def main():
     n_gpu = torch.cuda.device_count()
 
     model = model.to(rank % n_gpu)
-    outputs = multi_test_writebak(model, data_loader, vis=args.vis)
+    outputs = multi_test_writebak(model, data_loader)
 
 if __name__ == '__main__':
     main()
