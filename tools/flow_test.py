@@ -98,7 +98,7 @@ def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0, vis=Fals
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Test an action recognizer')
-    parser.add_argument('--checkpoint', help='checkpoint file', type=str, default='weights/FlowNet2_checkpoint.pth.tar')
+    parser.add_argument('--checkpoint', help='checkpoint file', type=str)
     parser.add_argument('--imglist', help='inference list', type=str, default='')
     parser.add_argument('--imgroot', help='data root', type=str, default='')
     parser.add_argument('--port', help='communication port', type=int, default=16807)
@@ -126,6 +126,11 @@ def main():
         to_rgb = False
     dataset = FlowFrameDataset(args.imglist, args.imgroot, padding_base=args.pad_base, to_rgb=to_rgb)
 
+    if args.algo == 'flownet2':
+        args.checkpoint = 'weights/FlowNet2_checkpoint.pth.tar'
+    elif args.algo == 'pwcnet':
+        args.checkpoint = 'weights/pwcnet.pth.tar'
+
     # launcher should be defined
     distributed = True
     init_dist(args.launcher, port=args.port)
@@ -140,7 +145,10 @@ def main():
         model = PWCNet()
 
 
-    state_dict = torch.load(args.checkpoint)['state_dict']
+    state_dict = torch.load(args.checkpoint)
+
+    if 'state_dict' in state_dict:
+        state_dict = state_dict['state_dict']
 
     # define them on demand
     # By default, flow frame loader have batch size 1, in case different shape

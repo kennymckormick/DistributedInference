@@ -7,7 +7,7 @@ from .utils import imfrombytes, imresize, imflip, imcrop, normalize, impad_to
 import sys
 import cv2
 import random as rd
-from utils import mrlines
+from utils.io_utils import mrlines
 sys.path.append('/mnt/lustre/share/pymc/py3')
 try:
     import mc
