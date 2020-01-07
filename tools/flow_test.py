@@ -26,8 +26,9 @@ warnings.filterwarnings("ignore", category=UserWarning)
 args = None
 
 from models.flownet2 import FlowNet2
+from models.pwcnet import PWCNet
 
-def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0, vis=False):
+def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0, vis=False, algo='flownet2'):
     model.eval()
     results = []
     rank, world_size = get_dist_info()
@@ -46,9 +47,17 @@ def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0, vis=Fals
         data_time_pool = data_time_pool + tac - tic
 
         with torch.no_grad():
-            inp1, inp2 = data['im_A'].to(my_gpu), data['im_B'].to(my_gpu)
+            if algo == 'flownet2':
+                inp1, inp2 = data['im_A'].to(my_gpu), data['im_B'].to(my_gpu)
+                result = model(inp1, inp2)
+            elif algo == 'pwcnet':
+                inp1, inp2 = data['im_A'], data['im_B']
+                inp = torch.cat([inp1, inp2], dim=1)
+                inp = inp.to(my_gpu)
+                result = model(inp)
+                # for PWCNet
+                result = result * 20.0
 
-            result = model(inp1, inp2)
             names = data['dest']
             result = result.data.cpu().numpy()
 
@@ -101,6 +110,7 @@ def parse_args():
     parser.add_argument('--local_rank', type=int, default=0)
     parser.add_argument('--pad_base', type=int, default=None)
     parser.add_argument('--vis', action='store_true')
+    parser.add_argument('--algo', type=str, help='algorithm to use for flow estimation', default='flownet2')
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
         os.environ['LOCAL_RANK'] = str(args.local_rank)
@@ -111,17 +121,25 @@ def main():
     global args
     args = parse_args()
 
-    dataset = FlowFrameDataset(args.imglist, args.imgroot, padding_base=args.pad_base)
+    to_rgb = True
+    if args.algo == 'pwcnet':
+        to_rgb = False
+    dataset = FlowFrameDataset(args.imglist, args.imgroot, padding_base=args.pad_base, to_rgb=to_rgb)
 
     # launcher should be defined
     distributed = True
     init_dist(args.launcher, port=args.port)
 
     # define your model
-    model_args = ABC()
-    model_args.fp16 = False
-    model_args.rgb_max = 255.0
-    model = FlowNet2(model_args)
+    if args.algo == 'flownet2':
+        model_args = ABC()
+        model_args.fp16 = False
+        model_args.rgb_max = 255.0
+        model = FlowNet2(model_args)
+    if args.algo == 'pwcnet':
+        model = PWCNet()
+
+
     state_dict = torch.load(args.checkpoint)['state_dict']
 
     # define them on demand
