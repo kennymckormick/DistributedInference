@@ -27,6 +27,7 @@ args = None
 
 from models.flownet2 import FlowNet2
 from models.pwcnet import PWCNet
+from models.vcn import VCN
 
 # pwcnet downsample by 4 ...
 def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0):
@@ -51,15 +52,10 @@ def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0):
         data_time_pool = data_time_pool + tac - tic
 
         with torch.no_grad():
-            if algo == 'flownet2':
-                inp1, inp2 = data['im_A'].to(my_gpu), data['im_B'].to(my_gpu)
-                result = model(inp1, inp2)
-            elif algo == 'pwcnet':
-                inp1, inp2 = data['im_A'], data['im_B']
-                inp = torch.cat([inp1, inp2], dim=1)
-                inp = inp.to(my_gpu)
-                result = model(inp)
-                # for PWCNet
+            inp1, inp2 = data['im_A'].to(my_gpu), data['im_B'].to(my_gpu)
+            result = model(inp1, inp2)
+
+            if algo == 'pwcnet':
                 result = result * 20.0
 
             names = data['dest']
@@ -85,8 +81,10 @@ def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0):
                     postscale_factor = args.out_se / min(preh, prew)
                     posth, postw = int(postscale_factor * preh), int(postscale_factor * prew)
                 else:
+                    postscale_factor = min(h, w) / min(preh, prew)
                     posth, postw = h, w
                 flow = cv2.resize(flow, (postw, posth))
+                flow *= postscale_factor
 
                 if not vis:
                     if out_flo:
@@ -165,9 +163,12 @@ def main():
         model_args.fp16 = False
         model_args.rgb_max = 255.0
         model = FlowNet2(model_args)
-    if args.algo == 'pwcnet':
+    elif args.algo == 'pwcnet':
         model = PWCNet()
-
+    elif args.algo == 'vcn':
+        model = VCN()
+    else:
+        raise NotImplementedError('algorithm not supported')
 
     state_dict = torch.load(args.checkpoint)
 

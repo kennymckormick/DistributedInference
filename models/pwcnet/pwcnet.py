@@ -15,7 +15,7 @@ import numpy as np
 
 
 __all__ = [
-    'pwc_dc_net'
+    'PWCNet'
     ]
 
 def conv(in_planes, out_planes, kernel_size=3, stride=1, padding=1, dilation=1):
@@ -172,9 +172,10 @@ class PWCNet(nn.Module):
         return output*mask
 
 
-    def forward(self,x):
-        im1 = x[:,:3,:,:]
-        im2 = x[:,3:,:,:]
+    def forward(self, im_A, im_B):
+        # for alignment
+        im1 = im_A
+        im2 = im_B
 
         c11 = self.conv1b(self.conv1aa(self.conv1a(im1)))
         c21 = self.conv1b(self.conv1aa(self.conv1a(im2)))

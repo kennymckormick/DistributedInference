@@ -21,111 +21,76 @@ from .conv4d import sepConv4d, butterfly4D
 
 
 
-class flow_reg(nn.Module):
-    """
-    Soft winner-take-all that selects the most likely diplacement.
-    Set ent=True to enable entropy output.
-    Set maxdisp to adjust maximum allowed displacement towards one side.
-        maxdisp=4 searches for a 9x9 region.
-    Set fac to squeeze search window.
-        maxdisp=4 and fac=2 gives search window of 9x5
-    """
-    def __init__(self, size, ent=False, maxdisp = int(4), fac=1):
-        B,W,H = size
-        super(flow_reg, self).__init__()
-        self.ent = ent
-        self.md = maxdisp
-        self.fac = fac
-        self.truncated = True
-        self.wsize = 3  # by default using truncation 7x7
+# Since flow_reg and warpmodule do not need any parameter, use function instead of class
+# since use function instead of class, new tensor on input device
+def flow_reg(x, ent=False, maxdisp=int(4)):
+    # Begin definition
+    b,u,v,h,w = x.shape
+    md = maxdisp
+    truncated = True
+    wsize = 3
+    device = x.device
+    flowrangey = range(-maxdisp, maxdisp + 1)
+    flowrangex = range(-maxdisp, maxdisp + 1)
+    meshgrid = np.meshgrid(flowrangex,flowrangey)
+    flowy = np.tile( np.reshape(meshgrid[0],[1,2*maxdisp+1,2*maxdisp+1,1,1]), (b,1,1,h,w) )
+    flowx = np.tile( np.reshape(meshgrid[1],[1,2*maxdisp+1,2*maxdisp+1,1,1]), (b,1,1,h,w) )
+    flowx, flowy = torch.Tensor(flowx).to(device), torch.Tensor(flowy).to(device)
+    pool3d = nn.MaxPool3d((wsize*2+1,wsize*2+1,1),stride=1,padding=(wsize,wsize,0))
+    # Begin operation
 
-        flowrangey = range(-maxdisp,maxdisp+1)
-        flowrangex = range(-int(maxdisp//self.fac),int(maxdisp//self.fac)+1)
-        meshgrid = np.meshgrid(flowrangex,flowrangey)
-        flowy = np.tile( np.reshape(meshgrid[0],[1,2*maxdisp+1,2*int(maxdisp//self.fac)+1,1,1]), (B,1,1,H,W) )
-        flowx = np.tile( np.reshape(meshgrid[1],[1,2*maxdisp+1,2*int(maxdisp//self.fac)+1,1,1]), (B,1,1,H,W) )
-        self.register_buffer('flowx',torch.Tensor(flowx))
-        self.register_buffer('flowy',torch.Tensor(flowy))
+    oldx = x
+    x = x.view(b,u*v,h,w)
 
-        self.pool3d = nn.MaxPool3d((self.wsize*2+1,self.wsize*2+1,1),stride=1,padding=(self.wsize,self.wsize,0))
+    idx = x.argmax(1)[:,np.newaxis]
+    if x.is_cuda:
+        mask = torch.cuda.HalfTensor(b,u*v,h,w).fill_(0).to(device)
+    else:
+        mask = torch.FloatTensor(b,u*v,h,w).fill_(0)
+    mask.scatter_(1,idx,1)
+    mask = mask.view(b,1,u,v,-1)
+    mask = self.pool3d(mask)[:,0].view(b,u,v,h,w)
 
-    def forward(self, x):
-        b,u,v,h,w = x.shape
-        oldx = x
+    ninf = x.clone().fill_(-np.inf).view(b,u,v,h,w)
+    x = torch.where(mask.byte(),oldx,ninf)
 
-        if self.truncated:
-            # truncated softmax
-            x = x.view(b,u*v,h,w)
+    b,u,v,h,w = x.shape
+    x = F.softmax(x.view(b,-1,h,w),1).view(b,u,v,h,w)
+    outx = torch.sum(torch.sum(x*flowx,1),1,keepdim=True)
+    outy = torch.sum(torch.sum(x*flowy,1),1,keepdim=True)
 
-            idx = x.argmax(1)[:,np.newaxis]
-            if x.is_cuda:
-                mask = Variable(torch.cuda.HalfTensor(b,u*v,h,w)).fill_(0)
-            else:
-                mask = Variable(torch.FloatTensor(b,u*v,h,w)).fill_(0)
-            mask.scatter_(1,idx,1)
-            mask = mask.view(b,1,u,v,-1)
-            mask = self.pool3d(mask)[:,0].view(b,u,v,h,w)
-
-            ninf = x.clone().fill_(-np.inf).view(b,u,v,h,w)
-            x = torch.where(mask.byte(),oldx,ninf)
+    if ent:
+        local_entropy = (-x*torch.clamp(x,1e-9,1-1e-9).log()).sum(1).sum(1)[:,np.newaxis]
+        if wsize == 0:
+            local_entropy[:] = 1.
         else:
-            self.wsize = (np.sqrt(u*v)-1)/2
+            local_entropy /= np.log((wsize*2+1)**2)
 
-        b,u,v,h,w = x.shape
-        x = F.softmax(x.view(b,-1,h,w),1).view(b,u,v,h,w)
-        outx = torch.sum(torch.sum(x*self.flowx,1),1,keepdim=True)
-        outy = torch.sum(torch.sum(x*self.flowy,1),1,keepdim=True)
-
-        if self.ent:
-            # local
-            local_entropy = (-x*torch.clamp(x,1e-9,1-1e-9).log()).sum(1).sum(1)[:,np.newaxis]
-            if self.wsize == 0:
-                local_entropy[:] = 1.
-            else:
-                local_entropy /= np.log((self.wsize*2+1)**2)
-
-            # global
-            x = F.softmax(oldx.view(b,-1,h,w),1).view(b,u,v,h,w)
-            global_entropy = (-x*torch.clamp(x,1e-9,1-1e-9).log()).sum(1).sum(1)[:,np.newaxis]
-            global_entropy /= np.log(x.shape[1]*x.shape[2])
-            return torch.cat([outx,outy],1),torch.cat([local_entropy, global_entropy],1)
-        else:
-            return torch.cat([outx,outy],1),None
+        x = F.softmax(oldx.view(b,-1,h,w),1).view(b,u,v,h,w)
+        global_entropy = (-x*torch.clamp(x,1e-9,1-1e-9).log()).sum(1).sum(1)[:,np.newaxis]
+        global_entropy /= np.log(x.shape[1]*x.shape[2])
+        return torch.cat([outx,outy],1),torch.cat([local_entropy, global_entropy],1)
+    else:
+        return torch.cat([outx,outy],1),None
 
 
-class WarpModule(nn.Module):
-    """
-    taken from https://github.com/NVlabs/PWC-Net/blob/master/PyTorch/models/PWCNet.py
-    """
-    def __init__(self, size):
-        super(WarpModule, self).__init__()
-        B,W,H = size
-        # mesh grid
-        xx = torch.arange(0, W).view(1,-1).repeat(H,1)
-        yy = torch.arange(0, H).view(-1,1).repeat(1,W)
-        xx = xx.view(1,1,H,W).repeat(B,1,1,1)
-        yy = yy.view(1,1,H,W).repeat(B,1,1,1)
-        self.register_buffer('grid',torch.cat((xx,yy),1).float())
+def warp(x, flo):
+    b, c, w, h = x.shape
+    device = x.device
+    xx = torch.arange(0, w).view(1,-1).repeat(h,1).to(device)
+    yy = torch.arange(0, h).view(-1,1).repeat(1,w).to(device)
+    xx = xx.view(1, 1, h, w).repeat(b, 1, 1, 1)
+    yy = yy.view(1, 1, h, w).repeat(b, 1, 1, 1)
+    grid = torch.cat((xx, yy), 1).float()
 
-    def forward(self, x, flo):
-        """
-        warp an image/tensor (im2) back to im1, according to the optical flow
+    vgrid = grid + flo
+    vgrid[:,0,:,:] = 2.0*vgrid[:,0,:,:]/max(w-1,1)-1.0
+    vgrid[:,1,:,:] = 2.0*vgrid[:,1,:,:]/max(h-1,1)-1.0
+    vgrid = vgrid.permute(0,2,3,1)
+    output = nn.functional.grid_sample(x, vgrid)
+    mask = ((vgrid[:,:,:,0].abs()<1) * (vgrid[:,:,:,1].abs()<1)) >0
+    return output*mask.unsqueeze(1).float(), mask
 
-        x: [B, C, H, W] (im2)
-        flo: [B, 2, H, W] flow
-
-        """
-        B, C, H, W = x.size()
-        vgrid = self.grid + flo
-
-        # scale grid to [-1,1]
-        vgrid[:,0,:,:] = 2.0*vgrid[:,0,:,:]/max(W-1,1)-1.0
-        vgrid[:,1,:,:] = 2.0*vgrid[:,1,:,:]/max(H-1,1)-1.0
-
-        vgrid = vgrid.permute(0,2,3,1)
-        output = nn.functional.grid_sample(x, vgrid)
-        mask = ((vgrid[:,:,:,0].abs()<1) * (vgrid[:,:,:,1].abs()<1)) >0
-        return output*mask.unsqueeze(1).float(), mask
 
 
 class VCN(nn.Module):
@@ -134,10 +99,9 @@ class VCN(nn.Module):
     md defines maximum displacement for each level, following a coarse-to-fine-warping scheme
     fac defines squeeze parameter for the coarsest level
     """
-    def __init__(self, size, md=[4,4,4,4,4], fac=1.):
+    def __init__(self, md=[4,4,4,4,4]):
         super(VCN,self).__init__()
         self.md = md
-        self.fac = fac
         use_entropy = True
         withbn = True
 
@@ -168,19 +132,17 @@ class VCN(nn.Module):
         self.p2 = sepConv4d(fdimb2,fdimb2, with_bn=False,full=full)
 
         ## soft WTA modules
-        self.flow_reg64 = flow_reg([fdimb1*size[0],size[1]//64,size[2]//64], ent=use_entropy, maxdisp=self.md[0], fac=self.fac)
-        self.flow_reg32 = flow_reg([fdimb1*size[0],size[1]//32,size[2]//32], ent=use_entropy, maxdisp=self.md[1])
-        self.flow_reg16 = flow_reg([fdimb1*size[0],size[1]//16,size[2]//16], ent=use_entropy, maxdisp=self.md[2])
-        self.flow_reg8 =  flow_reg([fdimb1*size[0],size[1]//8,size[2]//8]  , ent=use_entropy, maxdisp=self.md[3])
-        self.flow_reg4 =  flow_reg([fdimb2*size[0],size[1]//4,size[2]//4]  , ent=use_entropy, maxdisp=self.md[4])
+        self.flow_reg64 = lambda x: flow_reg(x, ent=use_entropy, maxdisp=self.md[0])
+        self.flow_reg32 = lambda x: flow_reg(x, ent=use_entropy, maxdisp=self.md[1])
+        self.flow_reg16 = lambda x: flow_reg(x, ent=use_entropy, maxdisp=self.md[2])
+        self.flow_reg8 =  lambda x: flow_reg(x, ent=use_entropy, maxdisp=self.md[3])
+        self.flow_reg4 =  lambda x: flow_reg(x, ent=use_entropy, maxdisp=self.md[4])
 
-        ## warping modules
-        self.warp5 = WarpModule([size[0],size[1]//32,size[2]//32])
-        self.warp4 = WarpModule([size[0],size[1]//16,size[2]//16])
-        self.warp3 = WarpModule([size[0],size[1]//8,size[2]//8])
-        self.warp2 = WarpModule([size[0],size[1]//4,size[2]//4])
-        if self.training:
-            self.warpx = WarpModule([size[0],size[1],size[2]])
+        # function to replace module
+        self.warp5 = warp
+        self.warp4 = warp
+        self.warp3 = warp
+        self.warp2 = warp
 
 
         ## hypotheses fusion modules, adopted from the refinement module of PWCNet
@@ -229,47 +191,6 @@ class VCN(nn.Module):
         self.dc2_conv6 = conv(64,       32,  kernel_size=3, stride=1, padding=1,  dilation=1)
         self.dc2_conv7 = nn.Conv2d(32,4*2*fdimb1 + 2*fdimb2,kernel_size=3,stride=1,padding=1,bias=True)
 
-        ## Out-of-range detection
-        if size[0]>1:  # only in train mode
-            self.dc6_convo = nn.Sequential(conv(128+4*fdimb1, 128, kernel_size=3, stride=1, padding=1,  dilation=1),
-                                conv(128,      128, kernel_size=3, stride=1, padding=2,  dilation=2),
-                                conv(128,      128, kernel_size=3, stride=1, padding=4,  dilation=4),
-                                conv(128,      96,  kernel_size=3, stride=1, padding=8,  dilation=8),
-                                conv(96,       64,  kernel_size=3, stride=1, padding=16, dilation=16),
-                                conv(64,       32,  kernel_size=3, stride=1, padding=1,  dilation=1),
-                                nn.Conv2d(32,1,kernel_size=3,stride=1,padding=1,bias=True))
-
-            self.dc5_convo = nn.Sequential(conv(128+2*4*fdimb1, 128, kernel_size=3, stride=1, padding=1,  dilation=1),
-                                conv(128,      128, kernel_size=3, stride=1, padding=2,  dilation=2),
-                                conv(128,      128, kernel_size=3, stride=1, padding=4,  dilation=4),
-                                conv(128,      96,  kernel_size=3, stride=1, padding=8,  dilation=8),
-                                conv(96,       64,  kernel_size=3, stride=1, padding=16, dilation=16),
-                                conv(64,       32,  kernel_size=3, stride=1, padding=1,  dilation=1),
-                                nn.Conv2d(32,1,kernel_size=3,stride=1,padding=1,bias=True))
-
-            self.dc4_convo = nn.Sequential(conv(128+3*4*fdimb1, 128, kernel_size=3, stride=1, padding=1,  dilation=1),
-                                conv(128,      128, kernel_size=3, stride=1, padding=2,  dilation=2),
-                                conv(128,      128, kernel_size=3, stride=1, padding=4,  dilation=4),
-                                conv(128,      96,  kernel_size=3, stride=1, padding=8,  dilation=8),
-                                conv(96,       64,  kernel_size=3, stride=1, padding=16, dilation=16),
-                                conv(64,       32,  kernel_size=3, stride=1, padding=1,  dilation=1),
-                                nn.Conv2d(32,1,kernel_size=3,stride=1,padding=1,bias=True))
-
-            self.dc3_convo = nn.Sequential(conv(64+16*fdimb1, 128, kernel_size=3, stride=1, padding=1,  dilation=1),
-                                conv(128,      128, kernel_size=3, stride=1, padding=2,  dilation=2),
-                                conv(128,      128, kernel_size=3, stride=1, padding=4,  dilation=4),
-                                conv(128,      96,  kernel_size=3, stride=1, padding=8,  dilation=8),
-                                conv(96,       64,  kernel_size=3, stride=1, padding=16, dilation=16),
-                                conv(64,       32,  kernel_size=3, stride=1, padding=1,  dilation=1),
-                                nn.Conv2d(32,1,kernel_size=3,stride=1,padding=1,bias=True))
-
-            self.dc2_convo = nn.Sequential(conv(64+16*fdimb1+4*fdimb2, 128, kernel_size=3, stride=1, padding=1,  dilation=1),
-                                conv(128,      128, kernel_size=3, stride=1, padding=2,  dilation=2),
-                                conv(128,      128, kernel_size=3, stride=1, padding=4,  dilation=4),
-                                conv(128,      96,  kernel_size=3, stride=1, padding=8,  dilation=8),
-                                conv(96,       64,  kernel_size=3, stride=1, padding=16, dilation=16),
-                                conv(64,       32,  kernel_size=3, stride=1, padding=1,  dilation=1),
-                                nn.Conv2d(32,1,kernel_size=3,stride=1,padding=1,bias=True))
 
         for m in self.modules():
             if isinstance(m, nn.Conv3d):
@@ -278,33 +199,21 @@ class VCN(nn.Module):
                 if hasattr(m.bias,'data'):
                     m.bias.data.zero_()
 
-    #@profile
-    def corr(self, refimg_fea, targetimg_fea, maxdisp, fac=1):
-        """
-        correlation function. Adopted from https://github.com/ClementPinard/Pytorch-Correlation-extension
-        faster, but backwards not implemented.
-        """
-        from spatial_correlation_sampler import SpatialCorrelationSampler
-        corr = SpatialCorrelationSampler(kernel_size=1,patch_size=(int(1+2*maxdisp//fac),int(1+2*maxdisp)),stride=1,padding=0,dilation_patch=1)
-        cost = corr(refimg_fea, targetimg_fea)
-        cost = F.leaky_relu(cost, 0.1,inplace=True)
-        return cost
 
-
-    def corrf(self, refimg_fea, targetimg_fea,maxdisp, fac=1):
+    def corrf(self, refimg_fea, targetimg_fea,maxdisp):
         """
         another correlation function giving the same result as corr()
         supports backwards
         """
         b,c,height,width = refimg_fea.shape
         if refimg_fea.is_cuda:
-            cost = Variable(torch.cuda.FloatTensor(b,c,2*maxdisp+1,2*int(maxdisp//fac)+1,height,width)).fill_(0.) # b,c,u,v,h,w
+            cost = Variable(torch.cuda.FloatTensor(b,c,2*maxdisp+1,2*maxdisp+1,height,width)).fill_(0.) # b,c,u,v,h,w
         else:
-            cost = Variable(torch.FloatTensor(b,c,2*maxdisp+1,2*int(maxdisp//fac)+1,height,width)).fill_(0.) # b,c,u,v,h,w
+            cost = Variable(torch.FloatTensor(b,c,2*maxdisp+1,2*maxdisp+1,height,width)).fill_(0.) # b,c,u,v,h,w
         for i in range(2*maxdisp+1):
             ind = i-maxdisp
-            for j in range(2*int(maxdisp//fac)+1):
-                indd = j-int(maxdisp//fac)
+            for j in range(2*maxdisp+1):
+                indd = j-maxdisp
                 feata = refimg_fea[:,:,max(0,-indd):height-indd,max(0,-ind):width-ind]
                 featb = targetimg_fea[:,:,max(0,+indd):height+indd,max(0,ind):width+ind]
                 diff = (feata*featb)
@@ -330,8 +239,10 @@ class VCN(nn.Module):
         return [param for name, param in self.named_parameters() if 'bias' in name]
 
     #@profile
-    def forward(self,im,disc_aux=None):
-        bs = im.shape[0]//2
+    def forward(self,im_A,im_B,disc_aux=None):
+        bs = im_A.shape[0]
+        # for alignment
+        im = torch.cat((im_A, im_B), dim=0)
 
         c06,c05,c04,c03,c02 = self.pspnet(im)
         # 64, 32, 16, 8, 4
@@ -354,10 +265,7 @@ class VCN(nn.Module):
         c22n = c22 / (c22.norm(dim=1, keepdim=True)+1e-9)
 
         ## matching 6
-        if self.training or (not im.is_cuda):
-            feat6 = self.corrf(c16n,c26n,self.md[0],fac=self.fac)
-        else:
-            feat6 = self.corrf(c16n,c26n,self.md[0],fac=self.fac)
+        feat6 = self.corrf(c16n,c26n,self.md[0])
         feat6 = self.f6(feat6)
         cost6 = self.p6(feat6) # b, 16, u,v,h,w
 
@@ -368,9 +276,6 @@ class VCN(nn.Module):
         flow6h =  flow6h.view(bs,-1,h,w) # b, 16*2, h, w
         ent6h =  ent6h.view(bs,-1,h,w) # b, 16*1, h, w
 
-        if self.training:
-            x = torch.cat((ent6h.detach(), flow6h.detach(), c16),1)
-            oor6 = self.dc6_convo(x)[:,0]
 
         # hypotheses fusion
         x = torch.cat((ent6h.detach(), flow6h.detach(), c16),1)
@@ -382,10 +287,7 @@ class VCN(nn.Module):
         ## matching 5
         up_flow6 = F.upsample(flow6, [im.size()[2]//32,im.size()[3]//32], mode='bilinear')*2
         warp5,_ = self.warp5(c25n, up_flow6)
-        if self.training or (not im.is_cuda):
-            feat5 = self.corrf(c15n,warp5,self.md[1])
-        else:
-            feat5 = self.corrf(c15n,warp5,self.md[1])
+        feat5 = self.corrf(c15n,warp5,self.md[1])
         feat5 = self.f5(feat5)
         cost5 = self.p5(feat5) # b, 16, u,v,h,w
 
@@ -401,9 +303,6 @@ class VCN(nn.Module):
         flow5h = torch.cat((flow5h, F.upsample(flow6h.detach()*2, [flow5h.shape[2],flow5h.shape[3]], mode='bilinear')),1) # b, k2--k2, h, w
         ent5h = torch.cat((ent5h, F.upsample(ent6h, [flow5h.shape[2],flow5h.shape[3]], mode='bilinear')),1)
 
-        if self.training:
-            x = torch.cat((ent5h.detach(), flow5h.detach(), c15),1)
-            oor5 = self.dc5_convo(x)[:,0]
 
         # hypotheses fusion
         x = torch.cat((ent5h.detach(), flow5h.detach(), c15),1)
@@ -416,10 +315,8 @@ class VCN(nn.Module):
         ## matching 4
         up_flow5 = F.upsample(flow5, [im.size()[2]//16,im.size()[3]//16], mode='bilinear')*2
         warp4,_ = self.warp4(c24n, up_flow5)
-        if self.training or (not im.is_cuda):
-            feat4 = self.corrf(c14n,warp4,self.md[2])
-        else:
-            feat4 = self.corrf(c14n,warp4,self.md[2])
+
+        feat4 = self.corrf(c14n,warp4,self.md[2])
         feat4 = self.f4(feat4)
         cost4 = self.p4(feat4) # b, 16, u,v,h,w
 
@@ -435,9 +332,6 @@ class VCN(nn.Module):
         flow4h = torch.cat((flow4h, F.upsample(flow5h.detach()*2, [flow4h.shape[2],flow4h.shape[3]], mode='bilinear')),1)
         ent4h = torch.cat((ent4h, F.upsample(ent5h, [flow4h.shape[2],flow4h.shape[3]], mode='bilinear')),1)
 
-        if self.training:
-            x = torch.cat((ent4h.detach(), flow4h.detach(), c14),1)
-            oor4 = self.dc4_convo(x)[:,0]
 
         # hypotheses fusion
         x = torch.cat((ent4h.detach(), flow4h.detach(), c14),1)
@@ -450,10 +344,8 @@ class VCN(nn.Module):
         ## matching 3
         up_flow4 = F.upsample(flow4, [im.size()[2]//8,im.size()[3]//8], mode='bilinear')*2
         warp3,_ = self.warp3(c23n, up_flow4)
-        if self.training or (not im.is_cuda):
-            feat3 = self.corrf(c13n,warp3,self.md[3])
-        else:
-            feat3 = self.corrf(c13n,warp3,self.md[3])
+
+        feat3 = self.corrf(c13n,warp3,self.md[3])
         feat3 = self.f3(feat3)
         cost3 = self.p3(feat3) # b, 16, u,v,h,w
 
@@ -469,9 +361,6 @@ class VCN(nn.Module):
         flow3h = torch.cat((flow3h, F.upsample(flow4h.detach()*2, [flow3h.shape[2],flow3h.shape[3]], mode='bilinear')),1)
         ent3h = torch.cat((ent3h, F.upsample(ent4h, [flow3h.shape[2],flow3h.shape[3]], mode='bilinear')),1)
 
-        if self.training:
-            x = torch.cat((ent3h.detach(), flow3h.detach(), c13),1)
-            oor3 = self.dc3_convo(x)[:,0]
 
         # hypotheses fusion
         x = torch.cat((ent3h.detach(), flow3h.detach(), c13),1)
@@ -483,10 +372,7 @@ class VCN(nn.Module):
         ## matching 2
         up_flow3 = F.upsample(flow3, [im.size()[2]//4,im.size()[3]//4], mode='bilinear')*2
         warp2,_ = self.warp2(c22n, up_flow3)
-        if self.training or (not im.is_cuda):
-            feat2 = self.corrf(c12n,warp2,self.md[4])
-        else:
-            feat2 = self.corrf(c12n,warp2,self.md[4])
+        feat2 = self.corrf(c12n,warp2,self.md[4])
         feat2 = self.f2(feat2)
         cost2 = self.p2(feat2) # b, 16, u,v,h,w
 
@@ -502,10 +388,6 @@ class VCN(nn.Module):
         flow2h = torch.cat((flow2h, F.upsample(flow3h.detach()*2, [flow2h.shape[2],flow2h.shape[3]], mode='bilinear')),1)
         ent2h = torch.cat((ent2h, F.upsample(ent3h, [flow2h.shape[2],flow2h.shape[3]], mode='bilinear')),1)
 
-        if self.training:
-            x = torch.cat((ent2h.detach(), flow2h.detach(), c12),1)
-            oor2 = self.dc2_convo(x)[:,0]
-
         # hypotheses fusion
         x = torch.cat((ent2h.detach(), flow2h.detach(), c12),1)
         x = self.dc2_conv4(self.dc2_conv3(self.dc2_conv2(self.dc2_conv1(x))))
@@ -520,34 +402,5 @@ class VCN(nn.Module):
         flow5 = F.upsample(flow5, [im.size()[2],im.size()[3]], mode='bilinear')
         flow6 = F.upsample(flow6, [im.size()[2],im.size()[3]], mode='bilinear')
 
-        if self.training:
-            flowl0 = disc_aux[0].permute(0,3,1,2).clone()
-            mask = disc_aux[1].clone()
-            loss =  1.0*torch.norm((flow2*4-flowl0[:,:2]),2,1)[mask].mean() +\
-                    0.5*torch.norm((flow3*8-flowl0[:,:2]),2,1)[mask].mean() + \
-                  0.25*torch.norm((flow4*16-flowl0[:,:2]),2,1)[mask].mean() + \
-                  0.25*torch.norm((flow5*32-flowl0[:,:2]),2,1)[mask].mean() + \
-                  0.25*torch.norm((flow6*64-flowl0[:,:2]),2,1)[mask].mean()
 
-            # out-of-range loss
-            im_warp,_ = self.warpx(im[bs:], flowl0[:,:2])
-            occ_mask = (im_warp - im[:bs]).norm(dim=1)>0.3
-
-            up_flow3 = F.upsample(up_flow3, [im.size()[2],im.size()[3]], mode='bilinear')*4
-            up_flow4 = F.upsample(up_flow4, [im.size()[2],im.size()[3]], mode='bilinear')*8
-            up_flow5 = F.upsample(up_flow5, [im.size()[2],im.size()[3]], mode='bilinear')*16
-            up_flow6 = F.upsample(up_flow6, [im.size()[2],im.size()[3]], mode='bilinear')*32
-            oor2 = F.upsample(oor2[:,np.newaxis], [im.size()[2],im.size()[3]], mode='bilinear')[:,0]
-            oor3 = F.upsample(oor3[:,np.newaxis], [im.size()[2],im.size()[3]], mode='bilinear')[:,0]
-            oor4 = F.upsample(oor4[:,np.newaxis], [im.size()[2],im.size()[3]], mode='bilinear')[:,0]
-            oor5 = F.upsample(oor5[:,np.newaxis], [im.size()[2],im.size()[3]], mode='bilinear')[:,0]
-            oor6 = F.upsample(oor6[:,np.newaxis], [im.size()[2],im.size()[3]], mode='bilinear')[:,0]
-            loss += self.get_oor_loss(flowl0[:,:2]-0,        oor6, (64* self.flow_reg64.flowx.max()),occ_mask)
-            loss += self.get_oor_loss(flowl0[:,:2]-up_flow6, oor5, (32* self.flow_reg32.flowx.max()),occ_mask)
-            loss += self.get_oor_loss(flowl0[:,:2]-up_flow5, oor4, (16* self.flow_reg16.flowx.max()),occ_mask)
-            loss += self.get_oor_loss(flowl0[:,:2]-up_flow4, oor3, (8* self.flow_reg8.flowx.max())  ,occ_mask)
-            loss += self.get_oor_loss(flowl0[:,:2]-up_flow3, oor2, (4* self.flow_reg4.flowx.max())  ,occ_mask)
-
-            return flow2*4, flow3*8,flow4*16,flow5*32,flow6*64,loss, oor2
-        else:
-            return flow2*4, ent2h.mean(1)[0]
+        return flow2*4, ent2h.mean(1)[0]
