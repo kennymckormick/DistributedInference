@@ -151,7 +151,7 @@ class PWCNet(nn.Module):
 
         if x.is_cuda:
             grid = grid.to(x.device)
-        vgrid = Variable(grid) + flo
+        vgrid = grid + flo
 
         # scale grid to [-1,1]
         vgrid[:,0,:,:] = 2.0*vgrid[:,0,:,:].clone() / max(W-1,1)-1.0
