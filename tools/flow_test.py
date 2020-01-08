@@ -147,25 +147,21 @@ def main():
         to_rgb = False
         std = 255.0
     dataset = FlowFrameDataset(args.imglist, args.imgroot, padding_base=args.pad_base, to_rgb=to_rgb, std=std, resize=args.se)
-
-    if args.algo == 'flownet2':
-        args.checkpoint = 'weights/FlowNet2_checkpoint.pth.tar'
-    elif args.algo == 'pwcnet':
-        args.checkpoint = 'weights/pwcnet.pth.tar'
-
-    # launcher should be defined
     distributed = True
     init_dist(args.launcher, port=args.port)
 
-    # define your model
+
     if args.algo == 'flownet2':
+        args.checkpoint = 'weights/FlowNet2_checkpoint.pth.tar'
         model_args = ABC()
         model_args.fp16 = False
         model_args.rgb_max = 255.0
         model = FlowNet2(model_args)
     elif args.algo == 'pwcnet':
+        args.checkpoint = 'weights/pwcnet.pth.tar'
         model = PWCNet()
     elif args.algo == 'vcn':
+        args.checkpoint = 'weights/vcn.pth.tar'
         model = VCN()
     else:
         raise NotImplementedError('algorithm not supported')
