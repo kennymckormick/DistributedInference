@@ -245,7 +245,12 @@ class VCN(nn.Module):
                 refimg_fea_span[i, j, :, :, tari_st: tari_ed, tarj_st: tarj_ed] = refimg_fea[:, :, srci_st: srci_ed, srcj_st: srcj_ed]
 
         cost = refimg_fea_span * targetimg_fea
+
+        u = 2 * maxdisp + 1
         cost = F.leaky_relu(cost, 0.1,inplace=True)
+        cost = cost.view((u ** 2, b * c, h, w))
+        cost = cost.transpose(0, 1)
+        cost = cost.view((b, c, u, u, h, w))
         return cost
 
     def get_oor_loss(self, flowl0, oor3, maxdisp, occ_mask):
