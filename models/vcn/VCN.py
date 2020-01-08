@@ -221,6 +221,33 @@ class VCN(nn.Module):
         cost = F.leaky_relu(cost, 0.1,inplace=True)
         return cost
 
+    def corr(self, refimg_fea, targetimg_fea, maxdisp):
+        device = refimg_fea.device
+        b,c,h,w = refimg_fea.shape
+
+        if refimg_fea.is_cuda:
+            refimg_fea_span = torch.cuda.FloatTensor(2*maxdisp+1,2*maxdisp+1,b,c,h,w).to(device)
+        else:
+            refimg_fea_span = torch.FloatTensor(2*maxdisp+1,2*maxdisp+1,b,c,h,w)
+
+        for i in range(2*maxdisp+1):
+            ind = i-maxdisp
+            for j in range(2*maxdisp+1):
+                iind = j-maxdisp
+                if ind < 0:
+                    srci_st, srci_ed, tari_st, tari_ed = -ind, w, 0, w + ind
+                else:
+                    srci_st, srci_ed, tari_st, tari_ed = 0, w - ind, ind, w
+                if iind < 0:
+                    srcj_st, srcj_ed, tarj_st, tarj_ed = -iind, h, 0, h + iind
+                else:
+                    srcj_st, srcj_ed, tarj_st, tarj_ed = 0, h - iind, iind, h
+                refimg_fea_span[i, j, :, :, tari_st: tari_ed, tarj_st: tarj_ed] = refimg_fea[:, :, srci_st: srci_ed, srcj_st: srcj_ed]
+
+        cost = refimg_fea_span * targetimg_fea
+        cost = F.leaky_relu(cost, 0.1,inplace=True)
+        return cost
+
     def get_oor_loss(self, flowl0, oor3, maxdisp, occ_mask):
         """
         return out-of-range loss
@@ -265,7 +292,7 @@ class VCN(nn.Module):
         c22n = c22 / (c22.norm(dim=1, keepdim=True)+1e-9)
 
         ## matching 6
-        feat6 = self.corrf(c16n,c26n,self.md[0])
+        feat6 = self.corr(c16n,c26n,self.md[0])
         feat6 = self.f6(feat6)
         cost6 = self.p6(feat6) # b, 16, u,v,h,w
 
@@ -287,7 +314,7 @@ class VCN(nn.Module):
         ## matching 5
         up_flow6 = F.upsample(flow6, [im.size()[2]//32,im.size()[3]//32], mode='bilinear')*2
         warp5,_ = self.warp5(c25n, up_flow6)
-        feat5 = self.corrf(c15n,warp5,self.md[1])
+        feat5 = self.corr(c15n,warp5,self.md[1])
         feat5 = self.f5(feat5)
         cost5 = self.p5(feat5) # b, 16, u,v,h,w
 
@@ -316,7 +343,7 @@ class VCN(nn.Module):
         up_flow5 = F.upsample(flow5, [im.size()[2]//16,im.size()[3]//16], mode='bilinear')*2
         warp4,_ = self.warp4(c24n, up_flow5)
 
-        feat4 = self.corrf(c14n,warp4,self.md[2])
+        feat4 = self.corr(c14n,warp4,self.md[2])
         feat4 = self.f4(feat4)
         cost4 = self.p4(feat4) # b, 16, u,v,h,w
 
@@ -345,7 +372,7 @@ class VCN(nn.Module):
         up_flow4 = F.upsample(flow4, [im.size()[2]//8,im.size()[3]//8], mode='bilinear')*2
         warp3,_ = self.warp3(c23n, up_flow4)
 
-        feat3 = self.corrf(c13n,warp3,self.md[3])
+        feat3 = self.corr(c13n,warp3,self.md[3])
         feat3 = self.f3(feat3)
         cost3 = self.p3(feat3) # b, 16, u,v,h,w
 
@@ -372,7 +399,7 @@ class VCN(nn.Module):
         ## matching 2
         up_flow3 = F.upsample(flow3, [im.size()[2]//4,im.size()[3]//4], mode='bilinear')*2
         warp2,_ = self.warp2(c22n, up_flow3)
-        feat2 = self.corrf(c12n,warp2,self.md[4])
+        feat2 = self.corr(c12n,warp2,self.md[4])
         feat2 = self.f2(feat2)
         cost2 = self.p2(feat2) # b, 16, u,v,h,w
 

@@ -150,6 +150,7 @@ def main():
         std = 255.0
     if args.algo == 'vcn':
         mean = [83.33498422,  93.08780475, 101.84256047]
+        
     dataset = FlowFrameDataset(args.imglist, args.imgroot, padding_base=args.pad_base, to_rgb=to_rgb,
                                                     std=std, mean=mean, resize=args.se)
     distributed = True
