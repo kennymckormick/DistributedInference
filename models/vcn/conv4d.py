@@ -7,7 +7,6 @@ import torch.nn.functional as F
 from torch.nn import Module
 from torch.nn.modules.conv import _ConvNd
 from torch.nn.modules.utils import _quadruple
-from torch.autograd import Variable
 from torch.nn import Conv2d
 
 def conv4d(data,filters,bias=None,permute_filters=True,use_half=False):
@@ -25,19 +24,19 @@ def conv4d(data,filters,bias=None,permute_filters=True,use_half=False):
 
     c_out=filters.size(1)
     if use_half:
-        output = Variable(torch.HalfTensor(h,b,c_out,w,d,t),requires_grad=data.requires_grad)
+        output = torch.HalfTensor(h,b,c_out,w,d,t)
     else:
-        output = Variable(torch.zeros(h,b,c_out,w,d,t),requires_grad=data.requires_grad)
+        output = torch.zeros(h,b,c_out,w,d,t)
 
     padding=filters.size(0)//2
     if use_half:
-        Z=Variable(torch.zeros(padding,b,c,w,d,t).half())
+        Z=torch.zeros(padding,b,c,w,d,t).half()
     else:
-        Z=Variable(torch.zeros(padding,b,c,w,d,t))
+        Z=torch.zeros(padding,b,c,w,d,t)
 
     if data.is_cuda:
-        Z=Z.cuda(data.get_device())
-        output=output.cuda(data.get_device())
+        Z=Z.to(data.device)
+        output=output.to(data.device)
 
     data_padded = torch.cat((Z,data,Z),0)
 
