@@ -235,13 +235,13 @@ class VCN(nn.Module):
             for j in range(2*maxdisp+1):
                 iind = j-maxdisp
                 if ind < 0:
-                    srci_st, srci_ed, tari_st, tari_ed = -ind, w, 0, w + ind
+                    srci_st, srci_ed, tari_st, tari_ed = -ind, h, 0, h + ind
                 else:
-                    srci_st, srci_ed, tari_st, tari_ed = 0, w - ind, ind, w
+                    srci_st, srci_ed, tari_st, tari_ed = 0, h - ind, ind, h
                 if iind < 0:
-                    srcj_st, srcj_ed, tarj_st, tarj_ed = -iind, h, 0, h + iind
+                    srcj_st, srcj_ed, tarj_st, tarj_ed = -iind, w, 0, w + iind
                 else:
-                    srcj_st, srcj_ed, tarj_st, tarj_ed = 0, h - iind, iind, h
+                    srcj_st, srcj_ed, tarj_st, tarj_ed = 0, w - iind, iind, w
                 refimg_fea_span[i, j, :, :, tari_st: tari_ed, tarj_st: tarj_ed] = refimg_fea[:, :, srci_st: srci_ed, srcj_st: srcj_ed]
 
         cost = refimg_fea_span * targetimg_fea
