@@ -200,7 +200,7 @@ class VCN(nn.Module):
                     m.bias.data.zero_()
 
 
-    def corrf(self, refimg_fea, targetimg_fea,maxdisp):
+    def corr(self, refimg_fea, targetimg_fea,maxdisp):
         """
         another correlation function giving the same result as corr()
         supports backwards
@@ -221,7 +221,7 @@ class VCN(nn.Module):
         cost = F.leaky_relu(cost, 0.1,inplace=True)
         return cost
 
-    def corr(self, refimg_fea, targetimg_fea, maxdisp):
+    def corr_deprecated(self, refimg_fea, targetimg_fea, maxdisp):
         device = refimg_fea.device
         b,c,h,w = refimg_fea.shape
 
