@@ -87,10 +87,11 @@ class FlowFrameDataset(Dataset):
     def __getitem__(self, idx):
         def loadim(pth):
             im = self.load_image(pth)
+            h, w, _ = im.shape
+
             if self.resize is not None:
                 im = imresize(im, self.resize)
 
-            h, w, _ = im.shape
             # pad pure black
             im = impad_to(im, self.padding_base, [0, 0, 0])
             if self.mean == 0 and self.std == 1:

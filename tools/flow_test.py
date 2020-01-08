@@ -28,6 +28,7 @@ args = None
 from models.flownet2 import FlowNet2
 from models.pwcnet import PWCNet
 
+# pwcnet downsample by 4 ...
 def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0):
     algo = args.algo
     vis = args.vis
@@ -74,7 +75,19 @@ def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0):
                 hw = hws[i]
                 h, w = hw[0], hw[1]
                 flow = result[i].transpose(1, 2, 0)
-                flow = flow[:h, :w]
+                if args.se != 0:
+                    prescale_factor = args.se / min(h, w)
+                    preh, prew = int(prescale_factor * h), int(prescale_factor * w)
+                else:
+                    preh, prew = h, w
+                flow = flow[:preh, :prew]
+                if args.out_se != 0:
+                    postscale_factor = args.out_se / min(preh, prew)
+                    posth, postw = int(postscale_factor * preh), int(postscale_factor * prew)
+                else:
+                    posth, postw = h, w
+                flow = cv2.resize(flow, (postw, posth))
+
                 if not vis:
                     if out_flo:
                         base_pth = osp.dirname(tmpl)
@@ -95,12 +108,8 @@ def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0):
                     if not osp.exists(base_pth):
                         os.system('mkdir -p ' + base_pth)
                     cv2.imwrite(tmpl.format('vis'), img[:,:,::-1])
-
-
-
         toc = time.time()
         proc_time_pool = proc_time_pool + toc - tac
-
         tic = toc
 
 
@@ -121,6 +130,9 @@ def parse_args():
     parser.add_argument('--vis', action='store_true')
     parser.add_argument('--algo', type=str, help='algorithm to use for flow estimation', default='flownet2')
     parser.add_argument('--out_flo', action='store_true')
+    # set edge length of short edge
+    parser.add_argument('--se', type=int, default=480)
+    parser.add_argument('--out_se', type=int, default=240)
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
         os.environ['LOCAL_RANK'] = str(args.local_rank)
@@ -136,7 +148,7 @@ def main():
     if args.algo == 'pwcnet':
         to_rgb = False
         std = 255.0
-    dataset = FlowFrameDataset(args.imglist, args.imgroot, padding_base=args.pad_base, to_rgb=to_rgb, std=std)
+    dataset = FlowFrameDataset(args.imglist, args.imgroot, padding_base=args.pad_base, to_rgb=to_rgb, std=std, resize=args.se)
 
     if args.algo == 'flownet2':
         args.checkpoint = 'weights/FlowNet2_checkpoint.pth.tar'
