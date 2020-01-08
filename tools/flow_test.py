@@ -110,6 +110,7 @@ def multi_test_flowvideo(model, data_loader, tmpdir='./tmp', bound=20.0):
     algo = args.algo
     vis = args.vis
     out_flo = args.out_flo
+    batch_size = args.batch_size
     model.eval()
     results = []
     rank, world_size = get_dist_info()
@@ -210,7 +211,7 @@ def parse_args():
     parser.add_argument('--se', type=int, default=256)
     parser.add_argument('--out_se', type=int, default=256)
 
-    parser.add_argument('--input_data', type=str, default='img', help='input img / vid?')
+    parser.add_argument('--input', type=str, default='img', help='input img / vid?')
     # inner loop for video
     parser.add_argument('--batch_size', help='batch_size in video', type=int, default=4)
     args = parser.parse_args()
@@ -225,6 +226,7 @@ def main():
 
     to_rgb = True
     std = 1.0
+    mean = 0.0
     if args.algo == 'pwcnet' or args.algo == 'vcn':
         to_rgb = False
         std = 255.0
