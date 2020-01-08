@@ -57,6 +57,8 @@ def multi_test_writebak(model, data_loader, tmpdir='./tmp', bound=20.0):
 
             if algo == 'pwcnet':
                 result = result * 20.0
+            if algo == 'vcn':
+                result = result[0]
 
             names = data['dest']
             result = result.data.cpu().numpy()
@@ -143,10 +145,13 @@ def main():
 
     to_rgb = True
     std = 1.0
-    if args.algo == 'pwcnet':
+    if args.algo == 'pwcnet' or args.algo == 'vcn':
         to_rgb = False
         std = 255.0
-    dataset = FlowFrameDataset(args.imglist, args.imgroot, padding_base=args.pad_base, to_rgb=to_rgb, std=std, resize=args.se)
+    if args.algo == 'vcn':
+        mean = [83.33498422,  93.08780475, 101.84256047]
+    dataset = FlowFrameDataset(args.imglist, args.imgroot, padding_base=args.pad_base, to_rgb=to_rgb,
+                                                    std=std, mean=mean, resize=args.se)
     distributed = True
     init_dist(args.launcher, port=args.port)
 

@@ -49,7 +49,7 @@ def flow_reg(x, ent=False, maxdisp=int(4)):
         mask = torch.FloatTensor(b,u*v,h,w).fill_(0)
     mask.scatter_(1,idx,1)
     mask = mask.view(b,1,u,v,-1)
-    mask = self.pool3d(mask)[:,0].view(b,u,v,h,w)
+    mask = pool3d(mask)[:,0].view(b,u,v,h,w)
 
     ninf = x.clone().fill_(-np.inf).view(b,u,v,h,w)
     x = torch.where(mask.byte(),oldx,ninf)
@@ -75,7 +75,7 @@ def flow_reg(x, ent=False, maxdisp=int(4)):
 
 
 def warp(x, flo):
-    b, c, w, h = x.shape
+    b, c, h, w = x.shape
     device = x.device
     xx = torch.arange(0, w).view(1,-1).repeat(h,1).to(device)
     yy = torch.arange(0, h).view(-1,1).repeat(1,w).to(device)

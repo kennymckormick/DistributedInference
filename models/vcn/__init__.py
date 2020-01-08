@@ -1,1 +1,1 @@
-from VCN import *
+from .VCN import *
