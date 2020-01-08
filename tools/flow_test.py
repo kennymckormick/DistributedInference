@@ -67,7 +67,7 @@ def multi_test_flowframe(model, data_loader, tmpdir='./tmp', bound=20.0):
                 h, w = hw[0], hw[1]
                 flow = result[i].transpose(1, 2, 0)
                 if args.algo == 'pwcnet':
-                    curh, curw, _ = result[i].shape
+                    curh, curw, _ = flow.shape
                     flow = cv2.resize(flow, (4 * curw, 4 * curh))
                 if args.se != 0:
                     prescale_factor = args.se / min(h, w)
@@ -153,7 +153,7 @@ def multi_test_flowvideo(model, data_loader, tmpdir='./tmp', bound=20.0):
                 for i in range(end - ptr):
                     flow = result[i].transpose(1, 2, 0)
                     if args.algo == 'pwcnet':
-                        curh, curw, _ = result[i].shape
+                        curh, curw, _ = flow.shape
                         flow = cv2.resize(flow, (4 * curw, 4 * curh))
                     if args.se != 0:
                         prescale_factor = args.se / min(h, w)
