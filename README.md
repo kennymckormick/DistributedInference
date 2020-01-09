@@ -18,20 +18,46 @@
   Datasets: 
 
    - [x] FlowFrameDataset
-   - [ ] FlowVideoDataset
+   - [x] FlowVideoDataset
 
   Algorithms:
 
   - [x] FlowNet2
-  - [ ] PWCNet
-  - [ ] VCN
+  - [x] PWCNet
+  - [x] VCN
 
-  First, switch to flow branch, compile needed packages with `bash compile.sh`
+First, switch to flow branch, compile needed packages with `bash compile.sh`
 
-  To run inference on demo data, run command:
+To run inference on demo data (frames), run command:
 
-  `./tools/dist_test.sh 2 --imglist demo_data/flow_est/img_list.txt --imgroot demo_data/flow_est/ --pad_base 64`
+  `./tools/dist_test.sh 2 --list demo_data/flow_est/img_list.txt --root demo_data/flow_est/ --pad_base 64 --se 512 --out_se 256 --algo flownet2 --input img`
 
-  Since FlowNet2 only run with images who's width and height are devided by 64, pad_base needs to set to 64.
+To run inference in demo data (videos), run command:
 
-  Add `--vis`, you can get colorful visualization instead of gray scale flow images.
+`./tools/dist_test.sh 2 --list demo_data/flow_est/vid_list.txt --root demo_data/flow_est/ --pad_base 64 --se 512 --out_se 256 --algo flownet2 --input vid`
+
+Add `--vis`, you can get colorful visualization instead of gray scale flow images.
+
+Here are two demos for videos in UCF101, the layout is:
+
+<table class="tg" style="width:350px">
+  <tr>
+    <th class="tg-nrix"></th>
+    <th class="tg-nrix" colspan="2">RGB</th>
+    <th class="tg-baqh" colspan="2">TVL1</th>
+    <th class="tg-0lax"></th>
+  </tr>
+  <tr>
+    <td class="tg-nrix" colspan="2">Flownet2</td>
+    <td class="tg-baqh" colspan="2">PWCNet</td>
+    <td class="tg-baqh" colspan="2">VCN</td>
+  </tr>
+</table>
+
+Billiards: 
+
+<img src="images/billiards.gif" >
+
+IceDancing: 
+
+<img src="images/icedancing.gif">
