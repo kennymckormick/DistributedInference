@@ -4,12 +4,11 @@ import numpy as np
 import cv2
 
 # TVL1 only now
-def FlowToImg(raw_flow, bound=0):
+def FlowToImg(flow, bound=0):
     floating_bound = False
     if bound == 0:
         floating_bound = True
     if not floating_bound:
-        flow = raw_flow
         flow[flow>bound] = bound
         flow[flow<-bound] = -bound
         flow += bound
@@ -17,8 +16,8 @@ def FlowToImg(raw_flow, bound=0):
         flow = flow.astype(np.uint8)
         return flow
     else:
-        lb = np.min(raw_flow)
-        ub = np.max(raw_flow)
+        lb = np.min(flow)
+        ub = np.max(flow)
         flow -= lb
         flow *= (255 / (ub - lb))
         flow = flow.astype(np.uint8)

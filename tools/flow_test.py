@@ -140,7 +140,11 @@ def multi_test_flowvideo(model, data_loader, tmpdir='./tmp', bound=0):
             h, w = hw[0], hw[1]
 
             ptr = 0
-            logfile = tmpl.replace('flow', 'flow_info').replace('/{}_{}.jpg', '.txt')
+            logfile = tmpl.replace('flow/', 'flow_info/').replace('/{}_{}.jpg', '.txt')
+
+            base_pth = osp.dirname(logfile)
+            if not osp.exists(base_pth):
+                os.system('mkdir -p {}'.format(base_pth))
             with open(logfile, 'w') as fout:
                 while ptr < num_frames:
                     end = ptr + batch_size
@@ -192,8 +196,8 @@ def multi_test_flowvideo(model, data_loader, tmpdir='./tmp', bound=0):
                                 flow_y_name = tmpl.format('y', i + ptr + 1)
                                 cv2.imwrite(tmpl.format('x', i + ptr + 1), flow_x)
                                 cv2.imwrite(tmpl.format('y', i + ptr + 1), flow_y)
-                                fout.write('{} {:.4f} {:.4f}'.format(flow_x_name, lb_x, ub_x))
-                                fout.write('{} {:.4f} {:.4f}'.format(flow_y_name, lb_y, ub_y))
+                                fout.write('{} {:.4f} {:.4f}\n'.format(flow_x_name, lb_x, ub_x))
+                                fout.write('{} {:.4f} {:.4f}\n'.format(flow_y_name, lb_y, ub_y))
                         else:
                             img = flow2rgb(flow)
                             base_pth = osp.dirname(tmpl)
