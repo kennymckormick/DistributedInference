@@ -26,7 +26,7 @@
   - [x] PWCNet
   - [x] VCN
 
-First, switch to flow branch, compile needed packages with `bash compile.sh`
+First, switch to flow branch, compile needed packages with `bash compile.sh`. You can download pretrained model weights from [Model Weights](https://mycuhk-my.sharepoint.com/:f:/g/personal/1155136485_link_cuhk_edu_hk/EiiKj2ceRf1Gtx0Z1U-WSfIBDw2jEpy12Fr6eYbyqRvqzQ?e=AuH2su)
 
 To run inference on demo data (frames), run command:
 
