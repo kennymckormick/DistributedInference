@@ -3,6 +3,20 @@ import os.path as osp
 import numpy as np
 import cv2
 
+
+def prenorm(flow, max_norm):
+    norm = np.sqrt(flow[:, :, 0] ** 2 + flow[:, :, 1] ** 2)
+    if np.max(norm) < max_norm:
+        return flow, np.max(norm)
+    else:
+        coeff = max_norm / norm
+        mask = norm < max_norm
+        coeff = mask + (1 - mask) * coeff
+        flow[:, :, 0] *= coeff
+        flow[:, :, 1] *= coeff
+        return flow, max_norm
+
+        
 # TVL1 only now
 def FlowToImg(flow, bound=0):
     floating_bound = False
