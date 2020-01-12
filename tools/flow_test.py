@@ -22,6 +22,8 @@ from scipy.special import softmax
 from utils.flow_utils import FlowToImg, flow2rgb, prenorm
 from abc import abstractproperty as ABC
 
+# for pwcnet, just store the 160p image ...
+# input: 320p, resize: 640p, output: 160p
 
 warnings.filterwarnings("ignore", category=UserWarning)
 args = None
@@ -166,22 +168,33 @@ def multi_test_flowvideo(model, data_loader, tmpdir='./tmp', bound=0):
                     for i in range(end - ptr):
                         flow = result[i].transpose(1, 2, 0)
                         if args.algo == 'pwcnet':
-                            curh, curw, _ = flow.shape
-                            flow = cv2.resize(flow, (4 * curw, 4 * curh))
-                        if args.se != 0:
-                            prescale_factor = args.se / min(h, w)
-                            preh, prew = int(prescale_factor * h), int(prescale_factor * w)
+                            # actually, 160p here,
+                            flow = flow / 4
+                            pre_se = min(flow.shape[:2])
+                            if args.out_se != 0:
+                                postscale_factor = args.out_se / pre_se
+                                posth, postw = int(postscale_factor * preh), int(postscale_factor * prew)
+                            else:
+                                postscale_factor = min(h, w) / min(preh, prew)
+                                posth, postw = h, w
+                            if postscale_factor != 1:
+                                flow = cv2.resize(flow, (postw, posth))
+                                flow *= prescale_factor
                         else:
-                            preh, prew = h, w
-                        flow = flow[:preh, :prew]
-                        if args.out_se != 0:
-                            postscale_factor = args.out_se / min(preh, prew)
-                            posth, postw = int(postscale_factor * preh), int(postscale_factor * prew)
-                        else:
-                            postscale_factor = min(h, w) / min(preh, prew)
-                            posth, postw = h, w
-                        flow = cv2.resize(flow, (postw, posth))
-                        flow *= postscale_factor
+                            if args.se != 0:
+                                prescale_factor = args.se / min(h, w)
+                                preh, prew = int(prescale_factor * h), int(prescale_factor * w)
+                            else:
+                                preh, prew = h, w
+                            flow = flow[:preh, :prew]
+                            if args.out_se != 0:
+                                postscale_factor = args.out_se / min(preh, prew)
+                                posth, postw = int(postscale_factor * preh), int(postscale_factor * prew)
+                            else:
+                                postscale_factor = min(h, w) / min(preh, prew)
+                                posth, postw = h, w
+                            flow = cv2.resize(flow, (postw, posth))
+                            flow *= postscale_factor
                         if not vis:
                             if out_flo:
                                 base_pth = osp.dirname(tmpl)
@@ -234,6 +247,7 @@ def parse_args():
     parser.add_argument('--input', type=str, default='img', help='input img / vid?')
     # inner loop for video
     parser.add_argument('--batch_size', help='batch_size in video', type=int, default=4)
+    parser.add_argument('--store', help='store rgb frames extracted', action='store_true')
     args = parser.parse_args()
     if 'LOCAL_RANK' not in os.environ:
         os.environ['LOCAL_RANK'] = str(args.local_rank)
@@ -257,8 +271,11 @@ def main():
         dataset = FlowFrameDataset(args.list, args.root, padding_base=args.pad_base,
                                         to_rgb=to_rgb, std=std, mean=mean, resize=args.se)
     elif args.input == 'vid':
+        store = False
+        if args.store:
+            store = True
         dataset = FlowVideoDataset(args.list, args.root, padding_base=args.pad_base,
-                                        to_rgb=to_rgb, std=std, mean=mean, resize=args.se)
+                                        to_rgb=to_rgb, std=std, mean=mean, resize=args.se, store=store)
 
     distributed = True
     init_dist(args.launcher, port=args.port)

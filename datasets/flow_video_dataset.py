@@ -26,7 +26,8 @@ class FlowVideoDataset(Dataset):
                  padding_base=1,
                  mean=0,
                  std=1,
-                 to_rgb=True):
+                 to_rgb=True,
+                 store=False):
 
         # param added 9/26/2019, 1:55:42 PM
         self.video_list = video_list
@@ -36,12 +37,14 @@ class FlowVideoDataset(Dataset):
         self.std = std
         self.to_rgb = to_rgb
         self.padding_base = padding_base
+        self.store = store
 
         videos = mrlines(video_list)
         videos = list(map(lambda x: x.split(), videos))
 
         self.videos = list(map(lambda x: osp.join(self.video_prefix, x[0]), videos))
         self.tmpls = list(map(lambda x: osp.join(self.video_prefix, x[1]), videos))
+
         assert len(self.videos) == len(self.tmpls)
 
         self.resize = resize
@@ -63,6 +66,14 @@ class FlowVideoDataset(Dataset):
     def __getitem__(self, idx):
         def loadvid(pth):
             ims = self.load_video(pth)
+            if self.store:
+                tmpl = self.tmpls[idx]
+                base = osp.dirname(tmpl)
+                if not osp.exists(base):
+                    os.system('mkdir -p {}'.format(base))
+                for i, frame in enumerate(ims):
+                    cv2.imwrite(tmpl.format('img', i + 1), frame)
+                    
             if self.resize is not None:
                 ims = list(map(lambda im: imresize(im, self.resize), ims))
 
