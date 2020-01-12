@@ -97,7 +97,11 @@ def multi_test_flowframe(model, data_loader, tmpdir='./tmp', bound=0):
                                 os.system('mkdir -p ' + base_pth)
                             np.save(tmpl.format('flo').replace('jpg', 'npy'), flow)
                         else:
-                            flow, norm = prenorm(flow, 32.0)
+                            # we output 160p flow, so restrict it to 16:
+                            if args.algo == 'pwcnet':
+                                flow, norm = prenorm(flow, 16.0)
+                            else:
+                                flow, norm = prenorm(flow, 32.0)
                             flow_x, lb_x, ub_x = FlowToImg(flow[:,:,:1], bound)
                             flow_y, lb_y, ub_y = FlowToImg(flow[:,:,1:], bound)
                             base_pth = osp.dirname(tmpl)
@@ -171,6 +175,7 @@ def multi_test_flowvideo(model, data_loader, tmpdir='./tmp', bound=0):
                             # actually, 160p here,
                             flow = flow / 4
                             pre_se = min(flow.shape[:2])
+                            preh, prew, _ = flow.shape
                             if args.out_se != 0:
                                 postscale_factor = args.out_se / pre_se
                                 posth, postw = int(postscale_factor * preh), int(postscale_factor * prew)
@@ -236,7 +241,7 @@ def parse_args():
         default='none',
         help='job launcher')
     parser.add_argument('--local_rank', type=int, default=0)
-    parser.add_argument('--pad_base', type=int, default=None)
+    parser.add_argument('--pad_base', type=int, default=64)
     parser.add_argument('--vis', action='store_true')
     parser.add_argument('--algo', type=str, help='algorithm to use for flow estimation', default='flownet2')
     parser.add_argument('--out_flo', action='store_true')
