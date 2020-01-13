@@ -184,7 +184,7 @@ def multi_test_flowvideo(model, data_loader, tmpdir='./tmp', bound=0):
                                 posth, postw = h, w
                             if postscale_factor != 1:
                                 flow = cv2.resize(flow, (postw, posth))
-                                flow *= prescale_factor
+                                flow *= postscale_factor
                         else:
                             if args.se != 0:
                                 prescale_factor = args.se / min(h, w)
@@ -326,4 +326,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-© 2020 GitHub, Inc.
