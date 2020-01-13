@@ -21,6 +21,7 @@ from torch.nn.parallel import DistributedDataParallel
 from scipy.special import softmax
 from utils.flow_utils import FlowToImg, flow2rgb, prenorm
 from abc import abstractproperty as ABC
+import smooth as zz
 
 # for pwcnet, just store the 160p image ...
 # input: 320p, resize: 640p, output: 160p
@@ -147,6 +148,8 @@ def multi_test_flowvideo(model, data_loader, tmpdir='./tmp', bound=0):
             hw = data['hw'].data.cpu().numpy()[0]
             h, w = hw[0], hw[1]
 
+            results = []
+
             ptr = 0
             logfile = tmpl.replace('flow/', 'flow_info/').replace('/{}_{}.jpg', '.txt')
 
@@ -185,6 +188,7 @@ def multi_test_flowvideo(model, data_loader, tmpdir='./tmp', bound=0):
                             if postscale_factor != 1:
                                 flow = cv2.resize(flow, (postw, posth))
                                 flow *= prescale_factor
+                            results.append(flow)
                         else:
                             if args.se != 0:
                                 prescale_factor = args.se / min(h, w)
@@ -200,32 +204,47 @@ def multi_test_flowvideo(model, data_loader, tmpdir='./tmp', bound=0):
                                 posth, postw = h, w
                             flow = cv2.resize(flow, (postw, posth))
                             flow *= postscale_factor
-                        if not vis:
-                            if out_flo:
-                                base_pth = osp.dirname(tmpl)
-                                if not osp.exists(base_pth):
-                                    os.system('mkdir -p ' + base_pth)
-                                np.save(tmpl.format('flo', i + ptr + 1).replace('jpg', 'npy'), flow)
-                            else:
-                                flow, norm = prenorm(flow, 32.0)
-                                flow_x, lb_x, ub_x = FlowToImg(flow[:,:,:1], bound)
-                                flow_y, lb_y, ub_y = FlowToImg(flow[:,:,1:], bound)
-                                base_pth = osp.dirname(tmpl)
-                                if not osp.exists(base_pth):
-                                    os.system('mkdir -p ' + base_pth)
-                                flow_x_name = tmpl.format('x', i + ptr + 1)
-                                flow_y_name = tmpl.format('y', i + ptr + 1)
-                                cv2.imwrite(tmpl.format('x', i + ptr + 1), flow_x)
-                                cv2.imwrite(tmpl.format('y', i + ptr + 1), flow_y)
-                                fout.write('{} {:.4f} {:.4f}\n'.format(flow_x_name, lb_x, ub_x))
-                                fout.write('{} {:.4f} {:.4f}\n'.format(flow_y_name, lb_y, ub_y))
-                        else:
-                            img = flow2rgb(flow)
-                            base_pth = osp.dirname(tmpl)
-                            if not osp.exists(base_pth):
-                                os.system('mkdir -p ' + base_pth)
-                            cv2.imwrite(tmpl.format('vis', i + ptr + 1), img[:,:,::-1])
+                        # move vis to final
+                        # if not vis:
+                        #     if out_flo:
+                        #         base_pth = osp.dirname(tmpl)
+                        #         if not osp.exists(base_pth):
+                        #             os.system('mkdir -p ' + base_pth)
+                        #         np.save(tmpl.format('flo', i + ptr + 1).replace('jpg', 'npy'), flow)
+                        #     else:
+                        #         flow, norm = prenorm(flow, 32.0)
+                        #         flow_x, lb_x, ub_x = FlowToImg(flow[:,:,:1], bound)
+                        #         flow_y, lb_y, ub_y = FlowToImg(flow[:,:,1:], bound)
+                        #         base_pth = osp.dirname(tmpl)
+                        #         if not osp.exists(base_pth):
+                        #             os.system('mkdir -p ' + base_pth)
+                        #         flow_x_name = tmpl.format('x', i + ptr + 1)
+                        #         flow_y_name = tmpl.format('y', i + ptr + 1)
+                        #         cv2.imwrite(tmpl.format('x', i + ptr + 1), flow_x)
+                        #         cv2.imwrite(tmpl.format('y', i + ptr + 1), flow_y)
+                        #         fout.write('{} {:.4f} {:.4f}\n'.format(flow_x_name, lb_x, ub_x))
+                        #         fout.write('{} {:.4f} {:.4f}\n'.format(flow_y_name, lb_y, ub_y))
+                        # else:
+                        #     img = flow2rgb(flow)
+                        #     base_pth = osp.dirname(tmpl)
+                        #     if not osp.exists(base_pth):
+                        #         os.system('mkdir -p ' + base_pth)
+                        #     cv2.imwrite(tmpl.format('vis', i + ptr + 1), img[:,:,::-1])
                     ptr = end
+            h, w, c = results[0].shape
+            results = map(lambda x: x.reshape(h,w,c,1), results)
+            results = np.concatenate(results, axis=3)
+            results = zz.smoothing(results)
+            num_frames = results.shape[3]
+            for i in range(num_frames):
+                flow = num_frames[:, :, :, i]
+                img = flow2rgb(flow)
+                base_pth = osp.dirname(tmpl)
+                if not osp.exists(base_pth):
+                    os.system('mkdir -p ' + base_pth)
+                cv2.imwrite(tmpl.format('vis', i + ptr + 1), img[:,:,::-1])
+
+
 
 # By default, use dyna flow, for each video, also output a list
 # for flow frame testing, output to `log/{rank}.txt`
