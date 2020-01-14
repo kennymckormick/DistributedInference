@@ -92,7 +92,7 @@ def multi_test_minivideo(model, jobs, bound=0):
                 for k in range(this_batch):
                     h, w = hws[k][0], hws[k][1]
                     dest = dests[k]
-                    flow = result[k]
+                    flow = result[k].transpose(1,2,0)
 
                     if args.algo == 'pwcnet':
                         pre_se = min(flow.shape[:2])
