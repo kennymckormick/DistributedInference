@@ -34,7 +34,7 @@ args = None
 from models.pwcnet import PWCNet
 from models.vcn import VCN
 
-def multi_test_flowvideo(model, jobs, bound=0):
+def multi_test_minivideo(model, jobs, bound=0):
     algo = args.algo
     vis = args.vis
     out_flo = args.out_flo
