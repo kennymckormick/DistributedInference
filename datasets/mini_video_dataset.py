@@ -41,7 +41,7 @@ class MiniVideoDataset(Dataset):
         self.to_rgb = to_rgb
         self.padding_base = padding_base
 
-        self.num_frames = len(os.listdir(path))
+        self.num_frames = len(os.listdir(osp.join(self.rgb_root, path)))
         self.frames = list(map(lambda x: osp.join(self.rgb_root, self.path,
                                     tmpl.format(x)), range(self.num_frames)))
 
