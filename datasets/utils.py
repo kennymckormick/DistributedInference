@@ -1,5 +1,13 @@
 import cv2
 import numpy as np
+import six
+
+
+def is_str(x):
+    """Whether the input is an string instance."""
+    return isinstance(x, six.string_types)
+
+    
 def imfrombytes(content, flag='color'):
     img_np = np.frombuffer(content, np.uint8)
     flag = imread_flags[flag] if is_str(flag) else flag
