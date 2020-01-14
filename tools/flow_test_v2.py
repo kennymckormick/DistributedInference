@@ -22,6 +22,7 @@ from scipy.special import softmax
 from utils.flow_utils import FlowToImg, flow2rgb, prenorm
 from utils.io_utils import mrlines
 from torch.utils.data import DataLoader
+from torch.utils.data._utils import collate
 from abc import abstractproperty as ABC
 
 # for pwcnet, just store the 160p image ...
@@ -33,6 +34,29 @@ args = None
 # from models.flownet2 import FlowNet2
 from models.pwcnet import PWCNet
 from models.vcn import VCN
+
+class MyDataLoader:
+    def __init__(self, dataset, batch_size):
+        self.dataset = dataset
+        self.len = len(dataset)
+        self.batch_size = batch_size
+        self.ptr = 0
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        if self.ptr == self.len:
+            raise StopIteration
+        ed = self.ptr + batch_size
+        ed = self.len if ed > self.len else ed
+        data = []
+        for i in range(self.ptr, ed):
+            data.append(self.dataset.__getitem__(i))
+        self.ptr = ed
+        return collate.default_collate(data)
+
+
 
 def multi_test_minivideo(model, jobs, bound=0):
     algo = args.algo
@@ -68,8 +92,7 @@ def multi_test_minivideo(model, jobs, bound=0):
                 resize=se, padding_base=padding_base,
                 mean=mean, std=std, to_rgb=to_rgb)
         num_frames = mini_dataset.num_frames
-        mini_loader = DataLoader(mini_dataset, batch_size,
-                        num_workers=2)
+        mini_loader = MyDataLoader(mini_dataset, batch_size)
 
         fout = open(logfile, 'w')
         with torch.no_grad():
