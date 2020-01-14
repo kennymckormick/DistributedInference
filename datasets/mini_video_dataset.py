@@ -43,13 +43,13 @@ class MiniVideoDataset(Dataset):
 
         self.num_frames = len(os.listdir(osp.join(self.rgb_root, path)))
         self.frames = list(map(lambda x: osp.join(self.rgb_root, self.path,
-                                    tmpl.format(x)), range(self.num_frames)))
+                                    tmpl.format(x + 1)), range(self.num_frames)))
 
         self.img_A = self.frames[:-1]
         self.img_B = self.frames[1:]
 
         self.dest_pth = list(map(lambda x: osp.join(self.flow_root, self.path,
-                                    '{}_{:05d}.jpg'.format('{}', x)),
+                                    '{}_{:05d}.jpg'.format('{}', x + 1)),
                                     range(self.num_frames - 1)))
 
         assert len(self.img_A) == len(self.img_B)
