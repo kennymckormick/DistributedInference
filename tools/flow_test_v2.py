@@ -105,7 +105,7 @@ def multi_test_minivideo(model, jobs, bound=0):
                             posth, postw = h, w
                         if post_factor != 1:
                             flow = cv2.resize(flow, (postw, posth))
-                            flow *= postscale_factor
+                            flow *= post_factor
                     else:
                         raise NotImplementedError
                     flow, norm = prenorm(flow, 32.0)
