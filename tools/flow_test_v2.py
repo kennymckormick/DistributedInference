@@ -91,7 +91,7 @@ def multi_test_minivideo(model, jobs, bound=0):
                 this_batch = im_A.shape[0]
                 for k in range(this_batch):
                     h, w = hws[k][0], hws[k][1]
-                    dest = dests[k]
+                    this_dest = dests[k]
                     flow = result[k].transpose(1,2,0)
 
                     if args.algo == 'pwcnet':
@@ -112,11 +112,11 @@ def multi_test_minivideo(model, jobs, bound=0):
                     flow_x, lb_x, ub_x = FlowToImg(flow[:,:,:1], bound)
                     flow_y, lb_y, ub_y = FlowToImg(flow[:,:,1:], bound)
 
-                    base_pth = osp.dirname(dest)
+                    base_pth = osp.dirname(this_dest)
                     if not osp.exists(base_pth):
                         os.system('mkdir -p ' + base_pth)
-                    flow_x_name = dest.format('x')
-                    flow_y_name = dest.format('y')
+                    flow_x_name = this_dest.format('x')
+                    flow_y_name = this_dest.format('y')
                     cv2.imwrite(flow_x_name, flow_x)
                     cv2.imwrite(flow_y_name, flow_y)
                     fout.write('{} {:.4f} {:.4f}\n'.format(flow_x_name, lb_x, ub_x))
