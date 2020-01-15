@@ -99,7 +99,8 @@ class MiniVideoDataset(Dataset):
     def __getitem__(self, idx):
         def loadim(pth):
             if pth in self.cache:
-                return self.cache[pth]
+                ret = self.cache.pop(pth)
+                return ret
             im = self.load_image(pth)
             h, w, _ = im.shape
 

@@ -48,7 +48,7 @@ class MyDataLoader:
     def __next__(self):
         if self.ptr == self.len:
             raise StopIteration
-        ed = self.ptr + batch_size
+        ed = self.ptr + self.batch_size
         ed = self.len if ed > self.len else ed
         data = []
         for i in range(self.ptr, ed):
