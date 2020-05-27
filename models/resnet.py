@@ -1,12 +1,10 @@
 import logging
 
 import torch.nn as nn
-import torch.utils.checkpoint as cp
 
 from utils.init_utils import constant_init, kaiming_init
 
 def conv3x3(in_planes, out_planes, stride=1, dilation=1):
-    "3x3 convolution with padding"
     return nn.Conv2d(
         in_planes,
         out_planes,
@@ -25,7 +23,7 @@ class BasicBlock(nn.Module):
                  stride=1,
                  dilation=1,
                  downsample=None,
-                 style='pytorch'):
+                 **kwargs):
         super(BasicBlock, self).__init__()
         self.conv1 = conv3x3(inplanes, planes, stride, dilation)
         self.bn1 = nn.BatchNorm2d(planes)
@@ -64,40 +62,37 @@ class Bottleneck(nn.Module):
                  stride=1,
                  dilation=1,
                  downsample=None,
-                 style='pytorch'):
+                 groups=1,
+                 width_per_group=64):
         """Bottleneck block for ResNet.
-        If style is "pytorch", the stride-two layer is the 3x3 conv layer,
-        if it is "caffe", the stride-two layer is the first 1x1 conv layer.
         """
         super(Bottleneck, self).__init__()
-        assert style in ['pytorch', 'caffe']
         self.inplanes = inplanes
         self.planes = planes
-        if style == 'pytorch':
-            self.conv1_stride = 1
-            self.conv2_stride = stride
-        else:
-            self.conv1_stride = stride
-            self.conv2_stride = 1
+        self.conv1_stride = 1
+        self.conv2_stride = stride
+        self.groups = groups
+        self.width_per_group = width_per_group
+        self.inflate_ratio = self.groups * self.width_per_group // 64
         self.conv1 = nn.Conv2d(
             inplanes,
-            planes,
+            planes * self.inflate_ratio,
             kernel_size=1,
             stride=self.conv1_stride,
             bias=False)
         self.conv2 = nn.Conv2d(
-            planes,
-            planes,
+            planes * self.inflate_ratio,
+            planes * self.inflate_ratio,
             kernel_size=3,
             stride=self.conv2_stride,
             padding=dilation,
             dilation=dilation,
             bias=False)
 
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.bn2 = nn.BatchNorm2d(planes)
-        self.conv3 = nn.Conv2d(
-            planes, planes * self.expansion, kernel_size=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes * self.inflate_ratio)
+        self.bn2 = nn.BatchNorm2d(planes * self.inflate_ratio)
+        self.conv3 = nn.Conv2d(planes * self.inflate_ratio, 
+                    planes * self.expansion, kernel_size=1, bias=False)
         self.bn3 = nn.BatchNorm2d(planes * self.expansion)
         self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
@@ -124,14 +119,9 @@ class Bottleneck(nn.Module):
                 identity = self.downsample(x)
 
             out += identity
-
             return out
-
-        if x.requires_grad:
-            out = cp.checkpoint(_inner_forward, x)
-        else:
-            out = _inner_forward(x)
-
+        
+        out = _inner_forward(x)
         out = self.relu(out)
 
         return out
@@ -143,7 +133,8 @@ def make_res_layer(block,
                    blocks,
                    stride=1,
                    dilation=1,
-                   style='pytorch'):
+                   groups=1,
+                   width_per_group=64):
     downsample = None
     if stride != 1 or inplanes != planes * block.expansion:
         downsample = nn.Sequential(
@@ -164,11 +155,11 @@ def make_res_layer(block,
             stride,
             dilation,
             downsample,
-            style=style))
+            groups=groups,
+            width_per_group=width_per_group))
     inplanes = planes * block.expansion
     for i in range(1, blocks):
-        layers.append(
-            block(inplanes, planes, 1, dilation, style=style))
+        layers.append(block(inplanes, planes, 1, dilation, groups=groups, width_per_group=width_per_group))
 
     return nn.Sequential(*layers)
 
@@ -181,11 +172,8 @@ class ResNet(nn.Module):
         num_stages (int): Resnet stages, normally 4.
         strides (Sequence[int]): Strides of the first block of each stage.
         dilations (Sequence[int]): Dilation of each stage.
-        style (str): `pytorch` or `caffe`. If set to "pytorch", the stride-two
-            layer is the 3x3 conv layer, otherwise the stride-two layer is
-            the first 1x1 conv layer.
-        frozen_stages (int): Stages to be frozen (all param fixed). -1 means
-            not freezing any parameters.
+        groups (int): Convolution Groups (If use).
+        width_per_group (int): Width per group.
     """
 
     arch_settings = {
@@ -201,8 +189,8 @@ class ResNet(nn.Module):
                  num_stages=4,
                  strides=(1, 2, 2, 2),
                  dilations=(1, 1, 1, 1),
-                 style='pytorch',
-                 frozen_stages=-1,
+                 groups=1,
+                 width_per_group=64,
                  num_classes=None):
         super(ResNet, self).__init__()
         if depth not in self.arch_settings:
@@ -213,8 +201,6 @@ class ResNet(nn.Module):
         self.strides = strides
         self.dilations = dilations
         assert len(strides) == len(dilations) == num_stages
-        self.style = style
-        self.frozen_stages = frozen_stages
         self.num_classes = num_classes
 
         self.block, stage_blocks = self.arch_settings[depth]
@@ -239,8 +225,7 @@ class ResNet(nn.Module):
                 planes,
                 num_blocks,
                 stride=stride,
-                dilation=dilation,
-                style=self.style)
+                dilation=dilation)
             self.inplanes = planes * self.block.expansion
             layer_name = 'layer{}'.format(i + 1)
             self.add_module(layer_name, res_layer)
@@ -275,16 +260,3 @@ class ResNet(nn.Module):
 
     def train(self, mode=True):
         super(ResNet, self).train(mode)
-        if mode and self.frozen_stages >= 0:
-            for param in self.conv1.parameters():
-                param.requires_grad = False
-            for param in self.bn1.parameters():
-                param.requires_grad = False
-            self.bn1.eval()
-            self.bn1.weight.requires_grad = False
-            self.bn1.bias.requires_grad = False
-            for i in range(1, self.frozen_stages + 1):
-                mod = getattr(self, 'layer{}'.format(i))
-                mod.eval()
-                for param in mod.parameters():
-                    param.requires_grad = False
