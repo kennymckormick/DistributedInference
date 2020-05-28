@@ -1,7 +1,8 @@
 import logging
-
 import torch.nn as nn
-
+import sys, os
+import torch
+sys.path = [os.getcwd()] + sys.path
 from utils.init_utils import constant_init, kaiming_init
 
 def conv3x3(in_planes, out_planes, stride=1, dilation=1):
@@ -87,7 +88,8 @@ class Bottleneck(nn.Module):
             stride=self.conv2_stride,
             padding=dilation,
             dilation=dilation,
-            bias=False)
+            bias=False,
+            groups=groups)
 
         self.bn1 = nn.BatchNorm2d(planes * self.inflate_ratio)
         self.bn2 = nn.BatchNorm2d(planes * self.inflate_ratio)
@@ -212,7 +214,9 @@ class ResNet(nn.Module):
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.global_pool = nn.AvgPool2d(kernel_size=7, stride=1, padding=0)
+        self.global_pool = nn.AdaptiveAvgPool2d(1)
+        self.groups = groups
+        self.width_per_group = width_per_group
 
         self.res_layers = []
         for i, num_blocks in enumerate(self.stage_blocks):
@@ -225,7 +229,9 @@ class ResNet(nn.Module):
                 planes,
                 num_blocks,
                 stride=stride,
-                dilation=dilation)
+                dilation=dilation,
+                groups=groups,
+                width_per_group=width_per_group)
             self.inplanes = planes * self.block.expansion
             layer_name = 'layer{}'.format(i + 1)
             self.add_module(layer_name, res_layer)
@@ -252,6 +258,7 @@ class ResNet(nn.Module):
         for i, layer_name in enumerate(self.res_layers):
             res_layer = getattr(self, layer_name)
             x = res_layer(x)
+        print(x.shape)
         x = self.global_pool(x)
         x = x.view((-1, self.feat_dim))
         if self.num_classes is not None:
@@ -260,3 +267,10 @@ class ResNet(nn.Module):
 
     def train(self, mode=True):
         super(ResNet, self).train(mode)
+        
+        
+if __name__ == '__main__':
+    net = ResNet(50, num_stages=4, strides=(1, 2, 2, 2), dilations=(1, 1, 1, 1),
+                 groups=1, width_per_group=64, num_classes=None)
+    inp = torch.zeros((1, 3, 256, 320))
+    ret = net(inp)

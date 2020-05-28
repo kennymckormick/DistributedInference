@@ -159,8 +159,7 @@ def main():
                     strides=(1, 2, 2, 2),
                     dilations=(1, 1, 1, 1),
                     style='pytorch',
-                    frozen_stages=-1,
-                    num_classes=1000)
+                    frozen_stages=-1)
 
     # define them on demand
     data_loader = build_dataloader(

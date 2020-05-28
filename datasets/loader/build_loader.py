@@ -15,8 +15,8 @@ if rlimit[0] < 4096:
 
 # No shuffle
 def build_dataloader(dataset,
-                     imgs_per_gpu,
-                     workers_per_gpu,
+                     imgs_per_gpu=1,
+                     workers_per_gpu=1,
                      rank_tot = None,
                      **kwargs):
 
