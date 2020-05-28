@@ -40,7 +40,7 @@ class VideoDataset(Dataset):
         pth = osp.join(self.img_prefix, video)
         vid = decord.VideoReader(pth)
         num_frame = len(vid)
-        frames = [vid[i] for i in range(num_frame)]
+        frames = [vid[i].asnumpy() for i in range(num_frame)]
         return frames
         
 
