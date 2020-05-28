@@ -45,7 +45,7 @@ class VideoDataset(Dataset):
         try:
             ims = [imresize(im, self.resize) for im in ims]
         except:
-            print(idx, self.data[idx].path, self.data[idx].num_frames, flush=True)
+            print(idx, self.data[idx], flush=True)
             return None
             
         ims = [normalize(im, self.mean, self.std, False) for im in ims]
@@ -55,5 +55,5 @@ class VideoDataset(Dataset):
 
         ret = {}
         ret['img'] = ims
-        ret['path'] = self.data[idx].path
+        ret['path'] = self.data[idx]
         return ret
