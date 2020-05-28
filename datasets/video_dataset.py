@@ -27,11 +27,7 @@ class VideoDataset(Dataset):
         self.img_prefix = img_prefix
         self.mean = np.array(mean)
         self.std = np.array(std)
-        
         self.resize = resize
-        loading_funcs = {'disk': self._load_image_disk}
-        self.storage_backend = 'disk'
-        self.load_image = loading_funcs[self.storage_backend]
 
     def __len__(self):
         return len(self.data)
@@ -45,7 +41,6 @@ class VideoDataset(Dataset):
         
 
     def __getitem__(self, idx):
-        print('loading image, index is {}'.format(idx), flush=True)
         ims = self.get_frames(self.data[idx])
         try:
             ims = [imresize(im, self.resize) for im in ims]
