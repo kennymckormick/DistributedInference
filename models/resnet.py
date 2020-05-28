@@ -258,7 +258,6 @@ class ResNet(nn.Module):
         for i, layer_name in enumerate(self.res_layers):
             res_layer = getattr(self, layer_name)
             x = res_layer(x)
-        print(x.shape)
         x = self.global_pool(x)
         x = x.view((-1, self.feat_dim))
         if self.num_classes is not None:
