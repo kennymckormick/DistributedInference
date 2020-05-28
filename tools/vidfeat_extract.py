@@ -14,7 +14,7 @@ import warnings
 from utils.dist_utils import get_dist_info
 import shutil
 import sys
-from datasets import build_dataloader, ImageDataset, RawFramesDataset
+from datasets import build_dataloader, ImageDataset, RawFramesDataset, VideoDataset
 from models.resnet import ResNet
 from utils.io_utils import load_pickle, dump_pickle
 from torch.nn.parallel import DistributedDataParallel
@@ -94,7 +94,7 @@ def main():
     global args
     args = parse_args()
 
-    dataset = RawFramesDataset(args.imglist, args.imgroot, storage_backend='memcached')
+    dataset = VideoDataset(args.imglist, args.imgroot)
 
     # launcher should be defined
     distributed = True
